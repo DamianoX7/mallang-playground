@@ -67,7 +67,7 @@
 
     .dock {
       pointer-events: auto; position: absolute; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-      width: min(720px, calc(100% - 20px)); padding: 10px; border-radius: 26px;
+      width: min(790px, calc(100% - 20px)); padding: 10px; border-radius: 26px;
       background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 10px 30px rgba(120, 70, 100, 0.16);
     }
@@ -97,6 +97,10 @@
       background: radial-gradient(circle at 34% 30%, #fff 0 10%, var(--a) 46%, var(--b) 100%);
     }
     .chip[aria-pressed='true'] { background: #fff; border-color: var(--accent); }
+    /* a mouse cannot swipe the row along: what does not fit goes on a second line */
+    @media (hover: hover) and (pointer: fine) {
+      .chips { flex-wrap: wrap; }
+    }
 
     .sorry { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font-size: 18px; line-height: 1.6; }
     @media (max-width: 380px) {
@@ -280,7 +284,10 @@
        k, g    [frequency, damping ratio] of the skin and of the body as a whole: above 1 it creeps back, below 1 it wobbles
        kappa   how briskly a poke travels on as a ripple   visc   how soon ripples die
        stick   how far the skin follows a finger before it slips   pull   how far it stretches before it snaps away
-       face    1: a mochi's little face   2: a fox, markings and all */
+       face    1: a mochi's little face   2: a fox, markings and all   3: what is printed on a stick of butter
+       wide    how many times wider than a ball it is: the camera draws back that far
+       look    [how steeply the camera looks down on it (degrees), how high above the table its middle is]: a flat toy is seen from higher up
+       voice   what it sounds like in the hand ('crunch': it crackles for as long as it is being worked) */
     const TOYS = [
       {
         id: 'fox', name: '여우 말랑이', shape: 'fox', roll: false, knot: false,
@@ -318,6 +325,15 @@
         squash: 0.28, poisson: 0.5, stretch: 0.24, stick: 0.4, pull: 1.5, sit: 0.94, voice: 'thick',
         bg: '#eee7ff', floor: '#ded2ff', accent: '#9a7bff', dot: ['#e2d8ff', '#9a7bff'],
       },
+      {
+        // 비누 말랑이 (크런치 비누 슬랑이): a white bar of "soap" with a waist, full of something that crunches
+        id: 'soap', name: '비누 말랑이', shape: 'soap', roll: false, knot: false,
+        base: '#fbfcfb', deep: '#9fd4ff', gloss: 0.38, trans: 0.4, clear: 0, powder: 0.1, glitter: 0, face: 0, paint: 0, pore: 0,
+        depth: 0.34, sink: 0.13, k: [5, 2.6], g: [6, 1.7], kappa: 500, visc: 40, bulge: 0.3, lobe: 0.85,
+        squash: 0.24, poisson: 0.5, stretch: 0.13, stick: 0.22, pull: 0.7, sit: 0.97, voice: 'crunch', wide: 1.2, look: [47, 0.5],
+        bg: '#e4f7f3', floor: '#d2efe9', accent: '#35b7a5', dot: ['#ffffff', '#a7e3d8'],
+        hint: '꾹꾹 누르면 바삭바삭 소리가 나요 · 꽉 쥐어도 돼요',
+      },
     ];
 
     // what is under the wax: clay in a clear skin, tied off with a knot
@@ -332,6 +348,11 @@
       { id: 'soda', name: '소다', waxA: '#bfe6ff', waxB: '#eaf8ff', base: '#62c3ff', deep: '#2f9bff', bg: '#e4f4ff', floor: '#cfeaff', accent: '#44aef5', dot: ['#eaf8ff', '#8fd3ff'] },
       { id: 'choco', name: '초코', waxA: '#5b3a2b', waxB: '#7b5038', base: '#ffe9c6', deep: '#ffb163', bg: '#f6e9dc', floor: '#ecd9c6', accent: '#a9714c', dot: ['#8a5a3f', '#4e3024'] },
       { id: 'lemon', name: '레몬', waxA: '#fff1a6', waxB: '#fffbe4', base: '#ffdc55', deep: '#ffb400', bg: '#fff8dc', floor: '#fff0bb', accent: '#f2b705', dot: ['#fffbe4', '#ffe066'] },
+      {
+        // 버터 왁뿌볼: not a ball at all, but a stick-of-butter 말랑이 dipped in pale wax thin enough (see) for the print on it to show through
+        id: 'butter', name: '버터', shape: 'butter', knot: false, face: 3, gloss: 0.22, trans: 0.5, powder: 0.12, depth: 0.3, lobe: 0.8, sit: 0.97, wide: 1.35, look: [47, 0.42], see: 0.5,
+        waxA: '#fffdf7', waxB: '#fff8e8', base: '#ffeb96', deep: '#ffc44a', bg: '#eef3f8', floor: '#e0e8f1', accent: '#3f82c9', dot: ['#fff1b8', '#f7b52e'],
+      },
     ].map((w) => ({ ...INSIDE, ...w }));
 
     // where a fox keeps its parts, as directions from its middle (the left ear, cheek and paw mirror the right ones)
@@ -364,9 +385,42 @@
         const r = 1 + 0.17 * tip - 0.08 * crease;
         return [x * r, y * r * 0.97, z * r];
       }
+      if (kind === 'soap') {
+        // a bar of soap: an oblong pillow, squarer than an oval both from above and from the side, and drawn in at the waist
+        const flat = Math.pow(Math.pow(Math.abs(x), 4) + Math.pow(Math.abs(z), 4), 0.25);
+        const k = Math.pow(Math.pow(flat, 2.6) + Math.pow(Math.abs(y), 2.6), -1 / 2.6), s = PROPORTIONS.soap;
+        return [x * k * s[0], y * k * s[1], z * k * s[2] * waist(x * k)];
+      }
+      if (kind === 'butter') return stick(x, y, z, false);
       return [x, y, z];
     }
-    const PROPORTIONS = { ball: [1, 1, 1], mochi: [1.1, 0.8, 1.1], peach: [1, 1.03, 1], fox: [1.08, 0.86, 1.08] };
+    const PROPORTIONS = { ball: [1, 1, 1], mochi: [1.1, 0.8, 1.1], peach: [1, 1.03, 1], fox: [1.08, 0.86, 1.08], soap: [1.34, 0.5, 0.86], butter: [1.5, 0.4, 0.5] };
+    // Toys that lie flat. A round toy's skin faces straight out from its middle, near enough for everything done here; theirs does not.
+    const SLAB = { soap: true, butter: true };
+    const EDGE = 0.1; // how far the edges of a stick of butter are rounded off
+    const waist = (x) => 1 - 0.15 * Math.exp(-(x * x) / 0.16); // how far a bar of soap is drawn in, along its length (−1…1)
+
+    /** A stick of butter is a box with its edges rounded off: the point of it that lies in a direction from its middle, or (facing) which way its skin faces there. */
+    function stick(x, y, z, facing) {
+      const [hx, hy, hz] = PROPORTIONS.butter, m = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
+      const q = [(x / m) * hx, (y / m) * hy, (z / m) * hz]; // on the box as it would be with sharp edges
+      const c = [clamp(q[0], EDGE - hx, hx - EDGE), clamp(q[1], EDGE - hy, hy - EDGE), clamp(q[2], EDGE - hz, hz - EDGE)];
+      const n = V.norm(V.sub(q, c));
+      return facing ? n : V.add(c, V.mul(n, EDGE));
+    }
+
+    /** Which way the skin of a toy faces, at the point of its outline that lies in a direction from its middle. */
+    function facing(kind, x, y, z) {
+      if (!SLAB[kind]) return [x, y, z];
+      if (kind === 'butter') return stick(x, y, z, true);
+      // found from two short steps along the skin
+      const u = V.norm(V.cross(Math.abs(y) < 0.9 ? [0, 1, 0] : [1, 0, 0], [x, y, z])), v = V.cross([x, y, z], u), e = 2e-3;
+      const at = (s, t) => {
+        const d = V.norm([x + u[0] * s + v[0] * t, y + u[1] * s + v[1] * t, z + u[2] * s + v[2] * t]);
+        return shapeAt(kind, d[0], d[1], d[2]);
+      };
+      return V.norm(V.cross(V.sub(at(e, 0), at(-e, 0)), V.sub(at(0, e), at(0, -e))));
+    }
 
     // ------------------------------------------------------------------ sound
 
@@ -509,7 +563,8 @@
           this.grain(t, 1800, 0.6, 0.12, 0.22 * amount, to, 'bandpass', 0.03);
           return;
         }
-        const f = this.grain(t, voice === 'thick' ? 520 : 760, 1.2, 0.15, (voice === 'thick' ? 1.25 : 0.75) * amount, to, 'lowpass', 0.02);
+        const thick = voice === 'thick', crunchy = voice === 'crunch'; // a crunchy one is mostly heard crackling (see crunch): the finger itself goes in quietly
+        const f = this.grain(t, thick ? 520 : crunchy ? 600 : 760, 1.2, 0.15, (thick ? 1.25 : crunchy ? 0.5 : 0.75) * amount, to, 'lowpass', 0.02);
         f.frequency.exponentialRampToValueAtTime(240, t + 0.16);
         if (voice === 'wet') {
           this.tone(t + 0.02, 420 + rand() * 200, 900, 0.05, 0.12, to);
@@ -544,6 +599,17 @@
       air(dur) {
         if (!this.live()) return;
         this.grain(this.ctx.currentTime + 0.004, 2400, 0.5, dur, 0.06, this.bus, 'bandpass', 0.18);
+      },
+
+      /** A crunchy filling being worked: n tiny crackles over the next moment (within), and now and then a bubble going. */
+      crunch(pan, n, within = 0.03) {
+        if (!this.live() || n < 1 || !this.room(n)) return;
+        const t = this.ctx.currentTime + 0.004, to = this.at(pan);
+        for (let i = 0; i < n; i++) {
+          const at = t + rand() * within;
+          if (rand() < 0.2) this.tone(at, 520 + rand() * 480, 1150 + rand() * 650, 0.016 + rand() * 0.02, 0.12 + rand() * 0.2, to);
+          else this.grain(at, 1700 * Math.pow(4.2, rand()), 2.5 + rand() * 5, 0.004 + rand() * 0.011, 0.8 + rand() * 1.6, to);
+        }
       },
 
       thud(v) {
@@ -715,6 +781,12 @@
         this.wake = true;
         this.calm = false;
         this.events = [];
+        this.out = this.dir; //   which way the skin faces at each point of the outline (a round toy's: straight out from its middle)
+        this.span = new Float32Array(this.n); // how near a line of sight must pass each point to count as touching it, squared
+        this.turning = false; //  a hand is turning it over on the table
+        this.tipV = 0; //         how fast it is falling over onto its side
+        this.flow = 0; //         how fast the skin is on the move, all in all
+        this.grain = 1.6 * Math.sqrt((16 * Math.PI) / (Math.sqrt(3) * (2 * this.n - 4))); // a little more than the gap between points
         this.shape = 'ball';
         this.scale = PROPORTIONS.ball;
         this.reset('ball');
@@ -728,23 +800,42 @@
           }
         }
         this.knot = top; // the point of skin the knot grows from
-        this.grain = 1.6 * Math.sqrt((16 * Math.PI) / (Math.sqrt(3) * (2 * this.n - 4))); // a little more than the gap between points
       }
 
       reset(shape) {
         this.shape = shape;
         this.scale = PROPORTIONS[shape];
-        const limb = [], lag = [];
+        const slab = !!SLAB[shape], limb = [], lag = [];
         for (let i = 0, j = 0; i < this.n; i++, j += 3) {
           const d = [this.dir[j], this.dir[j + 1], this.dir[j + 2]], at = shapeAt(shape, d[0], d[1], d[2]);
           this.rest.set(at, j);
-          // anything standing well clear of the body's own roundness is a limb
+          // anything standing well clear of the body's own roundness is a limb (the corners of a slab are just its corners)
           const out = V.len(at) / Math.hypot(d[0] * this.scale[0], d[1] * this.scale[1], d[2] * this.scale[2]) - 1.08;
-          if (out > 0) {
+          if (out > 0 && !slab) {
             limb.push(i);
             lag.push(Math.min(0.8, out * 1.6));
           }
         }
+        this.out = this.dir;
+        this.span.fill(this.grain * this.grain);
+        if (slab) {
+          // its skin faces wherever its sides do; and its points lie further apart along it than across, so some must be easier to hit
+          const { n, rest, nbr } = this, out = (this.out = new Float32Array(n * 3));
+          faceNormals(rest, this.idx, out);
+          for (let i = 0, j = 0, q = 0; i < n; i++, j += 3, q += 6) {
+            const l = Math.hypot(out[j], out[j + 1], out[j + 2]) || 1;
+            out[j] /= l;
+            out[j + 1] /= l;
+            out[j + 2] /= l;
+            let far = 0;
+            for (let k = 0; k < 6; k++) {
+              const p = nbr[q + k] * 3;
+              far = Math.max(far, (rest[p] - rest[j]) ** 2 + (rest[p + 1] - rest[j + 1]) ** 2 + (rest[p + 2] - rest[j + 2]) ** 2);
+            }
+            this.span[i] = Math.max(this.span[i], far * 0.4);
+          }
+        }
+        this.tipV = this.flow = 0;
         this.limb = Int32Array.from(limb);
         this.lag = Float32Array.from(lag);
         this.was = new Float32Array(limb.length * 3);
@@ -770,19 +861,51 @@
       /** The direction, from the toy's middle, of the bit of skin nearest a point in the world. */
       toRest(p) {
         const q = M3.apply(this.Ai, V.sub(p, this.C)), s = this.scale;
+        if (this.shape === 'soap') q[2] /= waist(q[0] / s[0]);
         return V.norm([q[0] / s[0], q[1] / s[1], q[2] / s[2]]);
+      }
+
+      /** Which way, in the world, the skin faces in a direction from the toy's middle (as the toy is posed, before anything local happens to it). */
+      outward(a) {
+        if (!SLAB[this.shape]) return V.norm(M3.apply(this.A, a));
+        return V.norm(M3.applyT(this.Ai, facing(this.shape, a[0], a[1], a[2])));
+      }
+
+      /** Keeps loose bits out of the toy: where a point that is inside it (or within gap of it) should be instead and which way is out, or null if it is clear. */
+      bar(p, gap) {
+        if (this.shape !== 'butter') {
+          // a ball
+          const out = V.sub(p, this.C), far = V.len(out);
+          if (far >= 1 + gap || far < 1e-4) return null;
+          const n = V.mul(out, 1 / far);
+          return { pos: V.add(this.C, V.mul(n, 1 + gap)), n };
+        }
+        // a box with rounded edges, taken in its own frame
+        const q = M3.apply(this.Ai, V.sub(p, this.C)), h = this.scale;
+        const d = [Math.abs(q[0]) - h[0] + EDGE, Math.abs(q[1]) - h[1] + EDGE, Math.abs(q[2]) - h[2] + EDGE];
+        const o = [Math.max(d[0], 0), Math.max(d[1], 0), Math.max(d[2], 0)], ol = V.len(o);
+        const far = ol + Math.min(Math.max(d[0], d[1], d[2]), 0) - EDGE; // how far outside its skin
+        if (far >= gap) return null;
+        const n = [0, 0, 0];
+        if (ol > 1e-6) for (let i = 0; i < 3; i++) n[i] = (q[i] < 0 ? -o[i] : o[i]) / ol;
+        else {
+          // well inside: out through the nearest side
+          const i = d[0] > d[1] ? (d[0] > d[2] ? 0 : 2) : d[1] > d[2] ? 1 : 2;
+          n[i] = q[i] < 0 ? -1 : 1;
+        }
+        return { pos: V.add(this.C, M3.apply(this.A, V.add(q, V.mul(n, gap - far)))), n: V.norm(M3.applyT(this.Ai, n)) };
       }
 
       /** The point of skin a line of sight meets first, or -1. outline: on the toy as it would be with no finger pushing or pulling at it. */
       under(o, d, outline) {
-        const { n, pos, base, drag } = this, reach = this.grain * this.grain;
+        const { n, pos, base, drag, span } = this;
         let hit = -1, near = Infinity;
         for (let i = 0, j = 0; i < n; i++, j += 3) {
           const x = (outline ? base[j] - drag[j] : pos[j]) - o[0];
           const y = (outline ? base[j + 1] - drag[j + 1] : pos[j + 1]) - o[1];
           const z = (outline ? base[j + 2] - drag[j + 2] : pos[j + 2]) - o[2];
           const t = x * d[0] + y * d[1] + z * d[2];
-          if (t < near && t > 0 && x * x + y * y + z * z - t * t < reach) {
+          if (t < near && t > 0 && x * x + y * y + z * z - t * t < span[i]) {
             near = t;
             hit = i;
           }
@@ -802,12 +925,28 @@
         this.wake = true;
       }
 
+      /** Turns it of its own accord (R: a turn in the world), and what its skin was doing turns with it. */
+      turn(R) {
+        const { off, vel } = this;
+        this.Q = M3.ortho(M3.mul(R, this.Q));
+        for (let j = 0; j < off.length; j += 3) {
+          const ox = off[j], oy = off[j + 1], oz = off[j + 2], vx = vel[j], vy = vel[j + 1], vz = vel[j + 2];
+          off[j] = R[0] * ox + R[1] * oy + R[2] * oz;
+          off[j + 1] = R[3] * ox + R[4] * oy + R[5] * oz;
+          off[j + 2] = R[6] * ox + R[7] * oy + R[8] * oz;
+          vel[j] = R[0] * vx + R[1] * vy + R[2] * vz;
+          vel[j + 1] = R[3] * vx + R[4] * vy + R[5] * vz;
+          vel[j + 2] = R[6] * vx + R[7] * vy + R[8] * vz;
+        }
+      }
+
       /** One frame. Returns false when nothing moved. */
       step(dt, toy, touches, grip) {
-        const { n, dir, rest, base, off, vel, tgt, drag, w, free, nbr, E, Ev } = this;
+        const { n, out: way, rest, base, off, vel, tgt, drag, w, free, nbr, E, Ev } = this;
         const n3 = n * 3;
         if (this.calm && !this.wake && !touches.length && grip < 0.001) {
           this.settled = true;
+          this.flow = 0;
           return false;
         }
         this.wake = false;
@@ -890,23 +1029,35 @@
         }
 
         // ---- still turning after a flick
+        const slab = !!SLAB[this.shape];
+        if (slab && Math.hypot(this.spin[0], this.spin[2]) < 3) this.spin[0] = this.spin[2] = 0; // a slab no longer tumbling fast drops onto a side (below); spun flat on the table, it carries on
         const sp = V.len(this.spin);
         if (sp > 0.02) {
-          const R = M3.axisAngle(V.mul(this.spin, 1 / sp), sp * dt);
-          this.Q = M3.ortho(M3.mul(R, this.Q));
-          for (let j = 0; j < n3; j += 3) {
-            // what the skin was doing turns with it
-            const ox = off[j], oy = off[j + 1], oz = off[j + 2], vx = vel[j], vy = vel[j + 1], vz = vel[j + 2];
-            off[j] = R[0] * ox + R[1] * oy + R[2] * oz;
-            off[j + 1] = R[3] * ox + R[4] * oy + R[5] * oz;
-            off[j + 2] = R[6] * ox + R[7] * oy + R[8] * oz;
-            vel[j] = R[0] * vx + R[1] * vy + R[2] * vz;
-            vel[j + 1] = R[3] * vx + R[4] * vy + R[5] * vz;
-            vel[j + 2] = R[6] * vx + R[7] * vy + R[8] * vz;
-          }
+          this.turn(M3.axisAngle(V.mul(this.spin, 1 / sp), sp * dt));
           this.spin = V.mul(this.spin, Math.exp(-3.2 * dt));
           stir += 1;
         } else this.spin = [0, 0, 0];
+
+        // ---- a slab does not balance on an edge or stand on its end: let go of, it tips over onto the nearest of its long sides
+        if (slab && !this.turning && !this.spin[0] && !this.spin[2]) {
+          const Q = this.Q, side = Math.abs(Q[4]) >= Math.abs(Q[5]) ? [0, Q[4] > 0 ? -1 : 1, 0] : [0, 0, Q[5] > 0 ? -1 : 1];
+          const now = M3.apply(Q, side), axis = V.cross(now, [0, -1, 0]), s = V.len(axis), left = Math.atan2(s, -now[1]);
+          if (left > 1e-4) {
+            this.tipV += 38 * dt;
+            const by = Math.min(left, this.tipV * dt);
+            this.turn(M3.axisAngle(V.mul(axis, 1 / s), by));
+            stir += 1;
+            if (by === left) {
+              // down, with a slap
+              const hit = this.tipV * 0.45, k = Math.min(hit * 0.4, 4.5) * this.give;
+              Ev[1] -= k;
+              Ev[0] += k * 0.5;
+              Ev[2] += k * 0.5;
+              if (hit > 1.5) this.events.push({ type: 'land', hit });
+              this.tipV = 0;
+            }
+          } else this.tipV = 0;
+        } else this.tipV = 0;
 
         // squash = exp(E), near enough
         const [a, b, c, d, e, f] = E;
@@ -963,9 +1114,9 @@
               const u = Math.sqrt(d2) / t.w;
               if (u > 0.5) {
                 const up = swell * smooth(0.5, 1.15, u) * (1 - smooth(1.15, 2.4, u)) * fr;
-                tgt[j] += (a0 * dir[j] + a1 * dir[j + 1] + a2 * dir[j + 2]) * up;
-                tgt[j + 1] += (a3 * dir[j] + a4 * dir[j + 1] + a5 * dir[j + 2]) * up;
-                tgt[j + 2] += (a6 * dir[j] + a7 * dir[j + 1] + a8 * dir[j + 2]) * up;
+                tgt[j] += (a0 * way[j] + a1 * way[j + 1] + a2 * way[j + 2]) * up;
+                tgt[j + 1] += (a3 * way[j] + a4 * way[j + 1] + a5 * way[j + 2]) * up;
+                tgt[j + 2] += (a6 * way[j] + a7 * way[j + 1] + a8 * way[j + 2]) * up;
               }
             }
           }
@@ -1025,6 +1176,7 @@
           energy += vel[j] * vel[j];
         }
         faceNormals(pos, this.idx, this.nrm);
+        this.flow = Math.sqrt(energy / n);
         this.calm = !held && stir < 2e-4 && energy < 1e-7 * n;
         return true;
       }
@@ -1057,6 +1209,7 @@
         this.stamp = 0;
         this.dirty = false;
         this.busy = false; //  something is still falling, opening or shrinking away
+        this.strain = 0;
       }
 
       clear() {
@@ -1068,15 +1221,20 @@
 
       /** A fresh coat, with its own way of breaking. */
       build(seed) {
-        const rnd = rng(seed), ball = this.ball;
+        const rnd = rng(seed), ball = this.ball, shape = ball.shape, slab = !!SLAB[shape];
+        // everything is laid out by direction from the toy's middle; these give the point of its skin that way, and how the skin faces there
+        const at = (u) => shapeAt(shape, u[0], u[1], u[2]), faces = (u) => facing(shape, u[0], u[1], u[2]);
 
         // where the shards are: darts of mixed sizes, so they come big and small
-        const seeds = [];
+        const seeds = [], spots = [];
         for (let tries = 0; tries < 12000 && seeds.length < 230; tries++) {
           const y = rnd() * 2 - 1, a = rnd() * TAU, s = Math.sqrt(1 - y * y);
-          const p = [s * Math.cos(a), y, s * Math.sin(a)];
-          const r = 0.15 + 0.2 * rnd() * rnd();
-          if (seeds.every((q) => (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2 > r * r)) seeds.push(p);
+          const d = [s * Math.cos(a), y, s * Math.sin(a)], p = at(d);
+          const r = (slab ? 0.19 : 0.15) + 0.2 * rnd() * rnd();
+          if (spots.every((q) => (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2 > r * r)) {
+            seeds.push(d);
+            spots.push(p);
+          }
         }
         const m = (this.count = seeds.length);
 
@@ -1087,11 +1245,12 @@
           K.push(kind);
         };
         // the wax went on unevenly
-        const outer = (u) => V.mul(u, 1 + THICK * (0.78 + 0.5 * noise3(u[0] * 2.3 + (seed % 89), u[1] * 2.3, u[2] * 2.3)));
-        const under = (u) => V.mul(u, UNDER);
+        const thick = (u) => THICK * (0.78 + 0.5 * noise3(u[0] * 2.3 + (seed % 89), u[1] * 2.3, u[2] * 2.3));
+        const cuts = slab ? 4 : 2; // how finely a shard is cut up to follow the skin under it: round a corner takes more
         this.v0 = new Uint32Array(m);
         this.v1 = new Uint32Array(m);
-        this.mid = new Float32Array(m * 3);
+        this.mid = new Float32Array(m * 3); //  the middle of each shard, as a direction…
+        this.spot = new Float32Array(m * 3); // …and as a point of the outline
         this.span = new Float32Array(m);
         this.seeds = new Float32Array(m * 3);
 
@@ -1104,7 +1263,7 @@
           near.sort((p, q) => q[0] - p[0]);
           const e1 = V.norm(V.cross(Math.abs(s[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0], s)), e2 = V.cross(s, e1);
           let poly = [[-2, -2], [2, -2], [2, 2], [-2, 2]];
-          for (let k = 0; k < Math.min(40, near.length); k++) {
+          for (let k = 0; k < Math.min(slab ? 90 : 40, near.length); k++) {
             const q = seeds[near[k][1]];
             const cut = clip(poly, V.dot(e1, q), V.dot(e2, q), 1 - near[k][0]);
             if (cut.length < 3) break;
@@ -1115,31 +1274,57 @@
             return Math.hypot(p[0] - q[0], p[1] - q[1]) > 2e-3;
           });
           const rim = poly.map(([u, v]) => V.norm([s[0] + u * e1[0] + v * e2[0], s[1] + u * e1[1] + v * e2[1], s[2] + u * e1[2] + v * e2[2]]));
-          const c = V.norm(rim.reduce(V.add, [0, 0, 0])), k = rim.length;
+          const c = V.norm(rim.reduce(V.add, [0, 0, 0])), k = rim.length, spot = at(c);
           this.mid.set(c, i * 3);
-          this.span[i] = Math.max(...rim.map((p) => V.len(V.sub(p, c))));
+          this.spot.set(spot, i * 3);
+          this.span[i] = Math.max(...rim.map((p) => V.len(V.sub(at(p), spot))));
 
-          // top and underside: a fan from the middle, each slice split once more so it follows the curve
-          const fan = [c, ...rim, ...rim.map((p) => V.norm(V.add(c, p))), ...rim.map((p, j) => V.norm(V.add(p, rim[(j + 1) % k])))];
+          // top and underside: rings of points from the middle out to the rim, near enough to one another to follow the curve
+          const fan = [c];
+          for (let ring = 1; ring <= cuts; ring++) {
+            for (let j = 0; j < k; j++) {
+              const p = rim[j], q = rim[(j + 1) % k];
+              for (let t = 0; t < ring; t++) {
+                const a = (ring - t) / cuts, b = t / cuts, o = 1 - a - b;
+                fan.push(V.norm([c[0] * o + p[0] * a + q[0] * b, c[1] * o + p[1] * a + q[1] * b, c[2] * o + p[2] * a + q[2] * b]));
+              }
+            }
+          }
+          const skin = fan.map(at), face = fan.map(faces), deep = fan.map(thick);
           this.v0[i] = K.length;
           for (let side = 0; side < 2; side++) {
             const first = K.length;
-            for (const u of fan) put(side ? under(u) : outer(u), side ? V.mul(u, -1) : u, side);
-            for (let j = 0; j < k; j++) {
-              const j2 = (j + 1) % k, corner = first + 1 + j, corner2 = first + 1 + j2, in1 = first + 1 + k + j, in2 = first + 1 + k + j2, out = first + 1 + 2 * k + j;
-              for (const [x, y, z] of [[first, in1, in2], [in1, corner, out], [in2, out, corner2], [in1, out, in2]]) side ? I.push(x, z, y) : I.push(x, y, z);
+            const nth = (ring, q) => (ring ? first + 1 + (k * ring * (ring - 1)) / 2 + (q % (k * ring)) : first); // the q-th point round a ring
+            fan.forEach((u, f) => put(V.add(skin[f], V.mul(face[f], side ? UNDER - 1 : deep[f])), side ? V.mul(face[f], -1) : face[f], side));
+            for (let ring = 1; ring <= cuts; ring++) {
+              for (let j = 0; j < k; j++) {
+                for (let t = 0; t < ring; t++) {
+                  const x = nth(ring - 1, j * (ring - 1) + t), y = nth(ring, j * ring + t), z = nth(ring, j * ring + t + 1);
+                  side ? I.push(x, z, y) : I.push(x, y, z);
+                  if (t < ring - 1) {
+                    const x2 = nth(ring - 1, j * (ring - 1) + t + 1);
+                    side ? I.push(x, x2, z) : I.push(x, z, x2);
+                  }
+                }
+              }
             }
           }
           // the broken edge all the way round
           const loop = [];
-          for (let j = 0; j < k; j++) loop.push(rim[j], V.norm(V.add(rim[j], rim[(j + 1) % k])));
+          for (let j = 0; j < k; j++) {
+            const p = rim[j], q = rim[(j + 1) % k];
+            for (let t = 0; t < cuts; t++) {
+              const b = t / cuts, u = V.norm([p[0] + (q[0] - p[0]) * b, p[1] + (q[1] - p[1]) * b, p[2] + (q[2] - p[2]) * b]);
+              loop.push({ at: at(u), out: faces(u), deep: thick(u) });
+            }
+          }
           for (let j = 0; j < loop.length; j++) {
             const p = loop[j], q = loop[(j + 1) % loop.length], first = K.length;
-            const nr = V.norm(V.cross(V.sub(q, p), V.add(p, q)));
-            put(outer(p), nr, 2);
-            put(under(p), nr, 2);
-            put(under(q), nr, 2);
-            put(outer(q), nr, 2);
+            const nr = V.norm(V.cross(V.sub(q.at, p.at), V.add(p.out, q.out)));
+            put(V.add(p.at, V.mul(p.out, p.deep)), nr, 2);
+            put(V.add(p.at, V.mul(p.out, UNDER - 1)), nr, 2);
+            put(V.add(q.at, V.mul(q.out, UNDER - 1)), nr, 2);
+            put(V.add(q.at, V.mul(q.out, q.deep)), nr, 2);
             I.push(first, first + 1, first + 2, first, first + 2, first + 3);
           }
           this.v1[i] = K.length;
@@ -1155,7 +1340,7 @@
         const G = Math.max(1, Math.round(m / 4.5)), centres = [];
         for (let i = 0; i < G; i++) {
           const y = 1 - (2 * (i + 0.5)) / G, r = Math.sqrt(1 - y * y), a = i * 2.39996;
-          centres.push(V.norm([r * Math.cos(a) + (rnd() - 0.5) * 0.3, y + (rnd() - 0.5) * 0.3, r * Math.sin(a) + (rnd() - 0.5) * 0.3]));
+          centres.push(at(V.norm([r * Math.cos(a) + (rnd() - 0.5) * 0.3, y + (rnd() - 0.5) * 0.3, r * Math.sin(a) + (rnd() - 0.5) * 0.3])));
         }
         this.plate = new Uint16Array(m);
         this.plates = centres.map(() => []);
@@ -1163,9 +1348,14 @@
         this.hard = new Float32Array(m); //  how near a finger must come to crack it (a factor)
         this.snap = new Float32Array(m); //  how far out of line with its plate before it breaks away
         for (let i = 0; i < m; i++) {
-          const c = [this.mid[i * 3], this.mid[i * 3 + 1], this.mid[i * 3 + 2]];
-          let best = 0;
-          for (let g = 1; g < G; g++) if (V.dot(c, centres[g]) > V.dot(c, centres[best])) best = g;
+          let best = 0, near = Infinity;
+          for (let g = 0; g < G; g++) {
+            const d = (this.spot[i * 3] - centres[g][0]) ** 2 + (this.spot[i * 3 + 1] - centres[g][1]) ** 2 + (this.spot[i * 3 + 2] - centres[g][2]) ** 2;
+            if (d < near) {
+              near = d;
+              best = g;
+            }
+          }
           this.plate[i] = best;
           this.plates[best].push(i);
           this.hard[i] = 0.8 + 0.5 * rnd();
@@ -1230,10 +1420,11 @@
       /** Shards that now move as one piece. */
       piece(cells, root, loose) {
         const a = this.anchor[root] * 3, ball = this.ball;
-        const up = [ball.dir[a], ball.dir[a + 1], ball.dir[a + 2]];
+        const up = [ball.out[a], ball.out[a + 1], ball.out[a + 2]];
         const b = {
           kind: STUCK, cells, root,
-          pref: up, pos: [0, 0, 0], rot: M3.ident(), scale: 1,
+          pref: [ball.rest[a], ball.rest[a + 1], ball.rest[a + 2]], up, // the point of the outline it rides on, and which way the skin faces there
+          pos: [0, 0, 0], rot: M3.ident(), scale: 1,
           axis: V.norm(V.cross(up, [rand() - 0.5, rand() - 0.5, rand() - 0.5])), // it settles a little askew, which is what shows the crack
           tilt: cells.length > 1 ? 0.012 + 0.03 * rand() : 0.03 + 0.07 * rand(),
           rise: 0.002 + 0.008 * rand(),
@@ -1269,10 +1460,10 @@
 
       /** A finger on the shell: it cracks under it at once, and further out the harder it is pressed. */
       press(t) {
-        const reach = 0.15 + 0.42 * t.pr + 0.12 * Math.min(1, t.hold / 1.5), mid = this.mid;
+        const reach = 0.15 + 0.42 * t.pr + 0.12 * Math.min(1, t.hold / 1.5), spot = this.spot;
         for (let c = 0, q = 0; c < this.count; c++, q += 3) {
           if (this.body[c]) continue;
-          const d = Math.hypot(mid[q] - t.a[0], mid[q + 1] - t.a[1], mid[q + 2] - t.a[2]);
+          const d = Math.hypot(spot[q] - t.ra[0], spot[q + 1] - t.ra[1], spot[q + 2] - t.ra[2]);
           if (d < reach * this.hard[c]) this.crack(this.plate[c]);
         }
       }
@@ -1281,7 +1472,7 @@
       ride(b, dt, touches) {
         const ball = this.ball, a = this.anchor[b.root] * 3;
         const n = V.norm([ball.nrm[a], ball.nrm[a + 1], ball.nrm[a + 2]]);
-        const up = b.pref, was = M3.apply(ball.Q, up);
+        const at = b.pref, was = M3.apply(ball.Q, b.up);
         b.open = Math.min(1, b.open + dt * 11);
         b.rot = M3.mul(M3.arc(was, n), M3.mul(ball.Q, M3.axisAngle(b.axis, b.tilt * b.open)));
         const rise = b.rise * b.open;
@@ -1294,7 +1485,7 @@
             const c = b.cells[i];
             if (c === b.root) continue;
             const m = this.anchor[c] * 3;
-            const x = ball.dir[m] - up[0], y = ball.dir[m + 1] - up[1], z = ball.dir[m + 2] - up[2];
+            const x = ball.rest[m] - at[0], y = ball.rest[m + 1] - at[1], z = ball.rest[m + 2] - at[2];
             const miss = Math.hypot(
               ball.pos[m] - b.pos[0] - r[0] * x - r[1] * y - r[2] * z,
               ball.pos[m + 1] - b.pos[1] - r[3] * x - r[4] * y - r[5] * z,
@@ -1309,13 +1500,14 @@
         }
 
         // bending, shaking, stretching and rubbing all work it loose
-        const bend = 1 - V.dot(n, was);
+        // (a flat side does not bend when the whole toy is squeezed, as a round one does: there it is the skin stretching under the wax that does it)
+        const bend = 1 - V.dot(n, was) + (SLAB[ball.shape] ? this.strain * this.strain * 0.18 : 0);
         const shake = Math.hypot(ball.vel[a], ball.vel[a + 1], ball.vel[a + 2]);
         const pulled = Math.hypot(ball.drag[a], ball.drag[a + 1], ball.drag[a + 2]);
         let rub = 0, pinned = false;
         for (const t of touches) {
           if (!t.live) continue;
-          const d = Math.hypot(up[0] - t.a[0], up[1] - t.a[1], up[2] - t.a[2]);
+          const d = Math.hypot(at[0] - t.ra[0], at[1] - t.ra[1], at[2] - t.ra[2]);
           if (d < 0.5) {
             rub += (1 - smooth(0.12, 0.5, d)) * t.slide;
             if (d < t.w * 0.55 && t.pr > 0.3) pinned = true; // …but not while a finger holds it down
@@ -1354,9 +1546,11 @@
       adrift(b) {
         let c = [0, 0, 0];
         for (const i of b.cells) c = V.add(c, [this.mid[i * 3], this.mid[i * 3 + 1], this.mid[i * 3 + 2]]);
-        b.face = V.norm(c);
-        c = V.mul(b.face, 1 + THICK * 0.5);
-        b.reach = Math.max(...b.cells.map((i) => Math.hypot(this.mid[i * 3] - b.face[0], this.mid[i * 3 + 1] - b.face[1], this.mid[i * 3 + 2] - b.face[2]) + this.span[i]));
+        c = V.norm(c); // which way its middle lies
+        const shape = this.ball.shape, at = shapeAt(shape, c[0], c[1], c[2]);
+        b.face = facing(shape, c[0], c[1], c[2]);
+        b.reach = Math.max(...b.cells.map((i) => Math.hypot(this.spot[i * 3] - at[0], this.spot[i * 3 + 1] - at[1], this.spot[i * 3 + 2] - at[2]) + this.span[i]));
+        c = V.add(at, V.mul(b.face, THICK * 0.5));
         b.pos = V.add(b.pos, M3.apply(b.rot, V.sub(c, b.pref)));
         b.pref = c;
         b.kind = LOOSE;
@@ -1370,11 +1564,11 @@
         const turn = V.len(b.ang);
         if (turn > 1e-3) b.rot = M3.ortho(M3.mul(M3.axisAngle(V.mul(b.ang, 1 / turn), turn * dt), b.rot));
 
-        const out = V.sub(b.pos, ball.C), far = V.len(out), keep = 1.03 + b.reach * 0.3;
-        if (far < keep && far > 1e-4) {
-          const n = V.mul(out, 1 / far), into = V.dot(b.vel, n);
-          b.pos = V.add(ball.C, V.mul(n, keep));
-          if (into < 0) b.vel = V.sub(b.vel, V.mul(n, into * 1.25));
+        const bar = ball.bar(b.pos, 0.03 + b.reach * 0.3);
+        if (bar) {
+          const into = V.dot(b.vel, bar.n);
+          b.pos = bar.pos;
+          if (into < 0) b.vel = V.sub(b.vel, V.mul(bar.n, into * 1.25));
         }
 
         const up = M3.apply(b.rot, b.face);
@@ -1446,11 +1640,11 @@
 
       /** One frame. */
       update(dt, touches) {
-        const ball = this.ball;
+        const ball = this.ball, E = ball.E;
+        const strain = (this.strain = Math.sqrt(E[0] * E[0] + E[1] * E[1] + E[2] * E[2] + 2 * (E[3] * E[3] + E[4] * E[4] + E[5] * E[5]))); // how far the toy as a whole is squashed
         if (this.whole && !this.soft) {
           for (const t of touches) if (t.live && t.pr > 0.02) this.press(t);
           // once enough has broken for the ball to be squashed at all, squashing it finishes off the rest
-          const E = ball.E, strain = Math.sqrt(E[0] * E[0] + E[1] * E[1] + E[2] * E[2] + 2 * (E[3] * E[3] + E[4] * E[4] + E[5] * E[5]));
           if (strain > 0.03) for (let g = 0; g < this.plates.length; g++) if (strain > this.yield[g]) this.crack(g);
         }
         let busy = false;
@@ -1498,7 +1692,7 @@
         const { ball, pos, nrm, rest, face } = this;
         for (let c = 0; c < this.count; c++) {
           const b = this.body[c];
-          let px, py, pz, rx = 0, ry = 0, rz = 0, m, s = 1;
+          let px, py, pz, rx = 0, ry = 0, rz = 0, m, s = 1, on = 1;
           if (!b) {
             [px, py, pz] = ball.C;
             m = ball.A;
@@ -1512,6 +1706,7 @@
             [rx, ry, rz] = b.pref;
             m = b.rot;
             s = b.scale;
+            if (b.kind !== STUCK) on = 0.25; // a piece that has left the toy is marked by its normals coming short: nothing shows through it any more (see FS_SHELL)
           }
           const m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5], m6 = m[6], m7 = m[7], m8 = m[8];
           for (let j = this.v0[c] * 3, end = this.v1[c] * 3; j < end; j += 3) {
@@ -1520,9 +1715,9 @@
             pos[j + 1] = py + m3 * x + m4 * y + m5 * z;
             pos[j + 2] = pz + m6 * x + m7 * y + m8 * z;
             const nx = face[j], ny = face[j + 1], nz = face[j + 2];
-            nrm[j] = m0 * nx + m1 * ny + m2 * nz;
-            nrm[j + 1] = m3 * nx + m4 * ny + m5 * nz;
-            nrm[j + 2] = m6 * nx + m7 * ny + m8 * nz;
+            nrm[j] = (m0 * nx + m1 * ny + m2 * nz) * on;
+            nrm[j + 1] = (m3 * nx + m4 * ny + m5 * nz) * on;
+            nrm[j + 2] = (m6 * nx + m7 * ny + m8 * nz) * on;
           }
         }
         for (const b of this.bodies) b.fresh = false;
@@ -1562,8 +1757,8 @@
         this.fading = 0.45;
       }
 
-      update(dt, C) {
-        const { p, v, on } = this;
+      update(dt, ball) {
+        const { p, v, on } = this, C = ball.C, round = ball.shape !== 'butter';
         if (this.fading > 0) {
           this.fading -= dt;
           const k = Math.exp(-9 * dt);
@@ -1581,7 +1776,19 @@
           p[j + 1] += v[q + 1] * dt;
           p[j + 2] += v[q + 2] * dt;
           const x = p[j] - C[0], y = p[j + 1] - C[1], z = p[j + 2] - C[2], far = Math.hypot(x, y, z);
-          if (far < 1.04 && far > 1e-4) {
+          const bar = round ? null : ball.bar([p[j], p[j + 1], p[j + 2]], 0.04);
+          if (bar) {
+            // off the toy
+            const into = v[q] * bar.n[0] + v[q + 1] * bar.n[1] + v[q + 2] * bar.n[2];
+            p[j] = bar.pos[0];
+            p[j + 1] = bar.pos[1];
+            p[j + 2] = bar.pos[2];
+            if (into < 0) {
+              v[q] -= bar.n[0] * into * 1.2;
+              v[q + 1] -= bar.n[1] * into * 1.2;
+              v[q + 2] -= bar.n[2] * into * 1.2;
+            }
+          } else if (round && far < 1.04 && far > 1e-4) {
             // off the ball
             const s = 1.04 / far, into = (v[q] * x + v[q + 1] * y + v[q + 2] * z) / far;
             p[j] = C[0] + x * s;
@@ -1607,7 +1814,7 @@
 
     // ------------------------------------------------------------------ drawing
 
-    const PITCH = (32 * Math.PI) / 180; // how steeply the table is looked down on
+    const PITCH = (32 * Math.PI) / 180; // how steeply the table is looked down on (unless the toy has a look of its own)
     const AWAY = 9.5;
     const AIM = 0.85; //                   the camera looks at the middle of the toy
     const KEY = V.norm([-0.55, 0.8, 0.22]); // the window: up and to the left
@@ -1660,17 +1867,28 @@
     `;
 
     const glsl = (v) => `vec3(${v.map((c) => c.toFixed(4)).join(', ')})`;
+
+    // what is printed along the top of a stick of butter, in two blues (the picture itself is drawn in View.label: red is one ink, green the other)
+    const GLSL_PRINT = `
+      uniform sampler2D uLabel;
+      const vec3 STICK = ${glsl(PROPORTIONS.butter)}, INK_A = ${glsl(lin('#2a69b3'))}, INK_B = ${glsl(lin('#6b9bd1'))};
+      vec2 ink(vec3 p, float blur) { // p: a place on the outline. blur: seen through wax, the print is soft
+        return texture2D(uLabel, p.xz / (2. * STICK.xz) + .5, blur).rg * smoothstep(STICK.y - .05, STICK.y - .01, p.y);
+      }
+      vec3 printed(vec3 base, vec2 k) { return mix(mix(base, INK_A, k.x), INK_B, k.y); }
+    `;
     const FS_SOFT = `
       precision highp float;
       varying vec3 vPos, vNrm, vRest, vDir; // vRest: its place on the outline; vDir: which way that is from the middle
       uniform vec3 uBase, uDeep; // its colour, and the colour of light that has been through it
       uniform vec4 uMat; //         gloss, translucency, clearness, powder
-      uniform vec4 uFx; //          glitter, face (1 mochi, 2 fox), peach paint, pores
+      uniform vec4 uFx; //          glitter, face (1 mochi, 2 fox, 3 the print on a stick of butter), peach paint, pores
       const vec3 EAR = ${glsl(FOX.ear)}, EAR_U = ${glsl(FOX.earU)}, EAR_V = ${glsl(FOX.earV)}, TAIL = ${glsl(FOX.tail)}, PAW = ${glsl(FOX.paw)};
       uniform mat3 uRot; //         outline → world
       uniform float uTime;
       ${GLSL_NOISE}
       ${GLSL_LIGHT}
+      ${GLSL_PRINT}
       void main() {
         vec3 N = normalize(vNrm), V = normalize(uCam - vPos), r = normalize(vRest);
         if (uFx.w > 0.) N = bumped(N, vPos, vnoise(vRest * 40.) + .5 * vnoise(vRest * 85.), .004 * uFx.w);
@@ -1684,7 +1902,11 @@
           base = mix(base, vec3(.86, .15, .21), smoothstep(.55, 1., blush) * .55);
           base *= .95 + .1 * vnoise(vRest * 60.);
         }
-        if (uFx.y > 1.5) { // a fox: russet, with white cheeks and bib, dark ear tips and paws, and a white tip to its tail
+        if (uFx.y > 2.5) { // a stick of butter says what it is
+          vec2 k = ink(vRest, 0.);
+          base = printed(base, k);
+          print = max(k.x, k.y) * .7;
+        } else if (uFx.y > 1.5) { // a fox: russet, with white cheeks and bib, dark ear tips and paws, and a white tip to its tail
           vec3 d = normalize(vDir), m = vec3(abs(d.x), d.y, d.z);
           vec3 q = vec3(d.x, d.y * .913 - d.z * .407, d.y * .407 + d.z * .913); // its face, too, looks up at whoever is looking down
           vec2 p = vec2(abs(q.x), q.y);
@@ -1783,11 +2005,14 @@
       varying vec3 vPos, vNrm, vRest; varying float vKind; // 0 top, 1 underside, 2 broken edge
       uniform vec3 uWaxA, uWaxB, uInner;
       uniform mat3 uRot;
-      uniform float uWet, uPour;
+      uniform float uWet, uPour, uSee; // uSee: how much of what is under the wax shows through it
       ${GLSL_NOISE}
       ${GLSL_LIGHT}
+      ${GLSL_PRINT}
       void main() {
         vec3 r = normalize(vRest);
+        vec2 seen = uSee > 0. ? ink(vRest, 2.) : vec2(0.); // what is printed on the toy under the wax
+        float on = step(.4, length(vNrm)); // a piece that has left the toy comes with its normals short (Shell.write): there is nothing under it
         if (uPour > -2.) { // being poured: the wax runs down from the top, in drips
           vec3 up = uRot * r;
           vec2 a = normalize(up.xz + 1e-4);
@@ -1801,6 +2026,8 @@
         if (vKind < .5) {
           N = bumped(N, vPos, vnoise(r * 4.5) + .4 * vnoise(r * 11.), .012);
           wax = mix(wax, uInner, .07 + .06 * vnoise(r * 7.)); // thin wax lets what is inside tint it
+          // …and wax that went on clear lets it be seen: more where it went on thinly, and most while it is still liquid
+          wax = mix(wax, printed(uInner, seen), min(1., uSee * on * (.85 + .3 * vnoise(r * 5. + 3.)) * (1. + .5 * uWet)));
         } else if (vKind < 1.5) wax = mix(wax * .93, uInner, .22);
         else wax = mix(wax, vec3(1.), .4); // a fresh break is pale
         wax *= mix(1., .86, uWet);
@@ -1833,6 +2060,7 @@
       uniform vec4 uRect;
       uniform vec3 uFloor, uBg, uDark;
       uniform vec4 uSpot; // where the toy stands (x z), how wide the dark under it is, how dark
+      uniform vec3 uLong; // which way a long toy lies on the table (x z), and how many times longer than wide the dark under it is
       uniform vec4 uGlow; // a clear toy throws a bright patch into its own shadow (x z, size, strength)
       float hash12(vec2 p) { vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
       void main() {
@@ -1841,6 +2069,7 @@
         vec3 col = uFloor * (1. + .12 * exp(-d * d / 9.));
         col = mix(col, uDark, s * .6);
         vec2 q = vPos.xz - uSpot.xy;
+        q -= uLong.xy * dot(q, uLong.xy) * (1. - 1. / uLong.z);
         col *= 1. - uSpot.w * exp(-dot(q, q) / (uSpot.z * uSpot.z));
         vec2 g = vPos.xz - uGlow.xy;
         col += uFloor * uGlow.w * exp(-dot(g, g) / uGlow.z);
@@ -1925,15 +2154,19 @@
         this.shellStamp = -1;
         this.col = null;
         this.to = null;
+        this.label();
 
         const self = this;
         this.cam = {
-          eye: [0, AIM + AWAY * Math.sin(PITCH), AWAY * Math.cos(PITCH)],
-          fwd: [0, -Math.sin(PITCH), -Math.cos(PITCH)], right: [1, 0, 0], up: [0, Math.cos(PITCH), -Math.sin(PITCH)],
-          vp: new Float32Array(16), w: 1, h: 1, f: 1, shift: 0, side: 0, px: 100,
-          /** px: how many pixels the toy's radius should take; shift, side: where on the screen its middle goes (−1 bottom … 1 top, −1 left … 1 right). */
-          set(w, h, px, shift, side = 0) {
-            Object.assign(this, { w, h, px, shift, side, f: (px * AWAY) / (h / 2) });
+          eye: [0, 0, 0], fwd: [0, 0, -1], right: [1, 0, 0], up: [0, 1, 0],
+          vp: new Float32Array(16), w: 1, h: 1, f: 1, shift: 0, side: 0, px: 100, pitch: PITCH, aim: AIM,
+          /** px: how many pixels the toy's radius should take; shift, side: where on the screen its middle goes (−1 bottom … 1 top, −1 left … 1 right);
+              pitch, aim: how steeply the table is looked down on, and how high above it the middle of the toy is. */
+          set(w, h, px, shift, side = 0, pitch = this.pitch, aim = this.aim) {
+            Object.assign(this, { w, h, px, shift, side, pitch, aim, f: (px * AWAY) / (h / 2) });
+            this.eye = [0, aim + AWAY * Math.sin(pitch), AWAY * Math.cos(pitch)];
+            this.fwd = [0, -Math.sin(pitch), -Math.cos(pitch)];
+            this.up = [0, Math.cos(pitch), -Math.sin(pitch)];
             const { eye: e, right: r, up: u, fwd: fw, f } = this, near = 0.5, far = 140;
             const view = [r[0], u[0], -fw[0], 0, r[1], u[1], -fw[1], 0, r[2], u[2], -fw[2], 0, -V.dot(r, e), -V.dot(u, e), V.dot(fw, e), 1];
             const proj = [f / (w / h), 0, 0, 0, 0, f, 0, 0, -side, -shift, (far + near) / (near - far), -1, 0, 0, (2 * far * near) / (near - far), 0];
@@ -1946,6 +2179,43 @@
             return { o: this.eye, d: V.norm([this.right[0] * dx + this.up[0] * dy + this.fwd[0], this.right[1] * dx + this.up[1] * dy + this.fwd[1], this.right[2] * dx + this.up[2] * dy + this.fwd[2]]) };
           },
         };
+      }
+
+      /** What is printed on the stick of butter, drawn once into a picture: red for the darker ink, green for the lighter. */
+      label() {
+        const gl = this.gl, c = document.createElement('canvas'), g = c.getContext('2d'), [hx, , hz] = PROPORTIONS.butter;
+        c.width = 1024;
+        c.height = 256;
+        g.fillStyle = '#000';
+        g.fillRect(0, 0, 1024, 256);
+        g.scale(1024 / ((256 * hx) / hz), 1); // the top of the stick, 256 from back to front and as long as that makes it
+        const write = (text, x, y, size, ink, fit) => {
+          g.font = `bold ${size}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+          g.fillStyle = ink;
+          g.fillText(text, x, y, fit);
+        };
+        write('4', 112, 172, 116, '#0f0');
+        write('OZ.', 181, 172, 50, '#0f0');
+        write('NET WT. (113 G)', 106, 208, 19, '#0f0', 160);
+        write('BUTTER', 310, 172, 112, '#f00', 362);
+        g.textAlign = 'center';
+        write('SALTED', 491, 74, 17, '#f00');
+
+        gl.activeTexture(gl.TEXTURE1); // it keeps a unit to itself: the shadow picture comes and goes on the first
+        gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const sharp = gl.getExtension('EXT_texture_filter_anisotropic'); // the print is looked at from low down
+        if (sharp) gl.texParameterf(gl.TEXTURE_2D, sharp.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(4, gl.getParameter(sharp.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+        gl.activeTexture(gl.TEXTURE0);
+        for (const prog of [this.pSoft, this.pShell]) {
+          gl.useProgram(prog.p);
+          gl.uniform1i(prog.u.uLabel, 1);
+        }
       }
 
       program(vs, fs, attrs) {
@@ -2034,7 +2304,7 @@
         const floor = lin(toy.floor), deep = lin(toy.deep), see = toy.trans * 0.6;
         this.to = { bg: lin(toy.bg), floor, dark: floor.map((c, i) => c * lerp(0.5, 0.45 + 0.45 * deep[i], see)), base: lin(toy.base), deep };
         if (now || !this.col) this.col = JSON.parse(JSON.stringify(this.to));
-        if (toy.wax) this.wax = { a: lin(toy.waxA), b: lin(toy.waxB) };
+        if (toy.wax) this.wax = { a: lin(toy.waxA), b: lin(toy.waxB), see: toy.see || 0 };
       }
 
       draw(app, dt) {
@@ -2105,7 +2375,15 @@
         gl.uniform3fv(u.uBg, col.bg);
         gl.uniform3fv(u.uDark, col.dark);
         const near = 1 - smooth(0, 1.4, ball.lift); // the dark right under it goes as it leaves the table
-        gl.uniform4f(u.uSpot, ball.C[0], ball.C[2], 0.62, 0.3 * near);
+        let across = 0.62, lie = [1, 0, 1];
+        if (SLAB[ball.shape]) {
+          // a slab lies along the table, and the dark under it is as long as it is
+          const Q = ball.Q, h = ball.scale, l = Math.hypot(Q[0], Q[6]);
+          across = 1.1 * (h[1] * Math.hypot(Q[1], Q[7]) + h[2] * Math.hypot(Q[2], Q[8]));
+          if (l > 0.2) lie = [Q[0] / l, Q[6] / l, Math.max(1, (h[0] * l) / across)];
+        }
+        gl.uniform4f(u.uSpot, ball.C[0], ball.C[2], across, 0.3 * near);
+        gl.uniform3fv(u.uLong, lie);
         const reach = ball.C[1] / KEY[1];
         gl.uniform4f(u.uGlow, ball.C[0] - KEY[0] * reach, ball.C[2] - KEY[2] * reach, 0.1, toy.clear * 0.55 * near);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -2146,6 +2424,7 @@
           gl.uniformMatrix3fv(u.uRot, false, M3.gl(ball.Q));
           gl.uniform1f(u.uWet, shell.wet);
           gl.uniform1f(u.uPour, shell.pour);
+          gl.uniform1f(u.uSee, this.wax.see);
           gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.sIdx);
           gl.drawElements(gl.TRIANGLES, shell.idx.length, gl.UNSIGNED_SHORT, 0);
 
@@ -2205,6 +2484,10 @@
       nudged: false, //  …and before that, the hint about the bits still clinging on has been given
       hintFor: 0,
       shown: -1,
+      lens: null, //     where the camera is to be, for this page and this toy (see resize)…
+      seen: null, //     …and how far it has got with what the toy asks of it: it eases there
+      crunch: 0, //      crackles a crunchy toy still owes (see crackle), and how long since it last let some out
+      since: 0,
 
       start() {
         this.stage = $('stage');
@@ -2316,6 +2599,12 @@
           });
           row.appendChild(chip);
         }
+        // on a phone the row is longer than the dock is wide: the one that is chosen is brought to the middle of it
+        const chosen = row.querySelector('[aria-pressed=true]');
+        if (chosen) {
+          row.scrollLeft = chosen.offsetLeft - row.offsetLeft - (row.clientWidth - chosen.offsetWidth) / 2;
+          row.scrollTop = chosen.offsetTop - row.offsetTop - (row.clientHeight - chosen.offsetHeight) / 2;
+        }
         for (const tab of document.querySelectorAll('.tab')) tab.setAttribute('aria-selected', tab.dataset.mode === this.mode ? 'true' : 'false');
         $('recoat').hidden = $('meter').hidden = this.mode !== 'wax';
         document.documentElement.style.setProperty('--accent', this.next.accent);
@@ -2340,19 +2629,29 @@
         this.hintFor = secs;
       },
 
+      /** Fits the picture to the page, and to the toy: a long one is seen from further off, so that it has the same room at its ends, and a flat one from higher up. */
       resize() {
-        const w = innerWidth, h = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2);
+        const w = innerWidth, h = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2), { wide: long = 1, look } = this.next;
         this.stage.width = Math.round(w * dpr);
         this.stage.height = Math.round(h * dpr);
+        const to = (this.lens = { w, h, across: 0, room: 0, shift: 0, side: 0, long, pitch: look ? (look[0] * Math.PI) / 180 : PITCH, aim: look ? look[1] : AIM });
         if (matchMedia('(orientation: landscape) and (max-height: 520px)').matches) {
           // a phone on its side: the dock is at the right, the hint along the bottom, and the toy gets what is left
           const wide = $('dock').getBoundingClientRect().left, top = 6, room = h - top - 46;
-          this.view.cam.set(w, h, clamp(Math.min(wide * 0.3, room * 0.33), 60, 300), 1 - (2 * (top + room * 0.5)) / h, wide / w - 1);
-          return;
+          Object.assign(to, { across: wide * 0.3, room: room * 0.33, shift: 1 - (2 * (top + room * 0.5)) / h, side: wide / w - 1 });
+        } else {
+          // the toy goes in the room between the title and the dock
+          const top = 64, room = Math.max(160, h - top - $('dock').offsetHeight - 24);
+          Object.assign(to, { across: w * 0.32, room: room * 0.33, shift: 1 - (2 * (top + room * 0.46)) / h });
         }
-        // the toy goes in the room between the title and the dock
-        const top = 64, room = Math.max(160, h - top - $('dock').offsetHeight - 24);
-        this.view.cam.set(w, h, clamp(Math.min(w * 0.32, room * 0.33), 60, 300), 1 - (2 * (top + room * 0.46)) / h);
+        if (!this.seen) this.seen = { long: to.long, pitch: to.pitch, aim: to.aim };
+        this.point();
+      },
+
+      /** Points the camera: what follows from the page (lens) is there at once; what follows from the toy it has only got so far towards (seen). */
+      point() {
+        const { w, h, across, room, shift, side } = this.lens, { long, pitch, aim } = this.seen;
+        this.view.cam.set(w, h, clamp(Math.min(across / long, room), 60, 300), shift, side, pitch, aim);
       },
 
       // ---- changing toys
@@ -2468,6 +2767,7 @@
           pr: 0, hold: 0, //                                   how far in it has sunk (0…1), and for how long
           d: [0, 0, 0], dv: [0, 0, 0], //                      how far it has dragged that bit of skin
           dir: [0, 0, -1], near: [], slide: 0, over: true, waxy: false,
+          heard: 0, //                                         how far in it was when last listened to (see crackle)
         };
         t.waxy = !!this.toy.wax && this.shell.waxAt(a);
         if (!t.waxy) Sound.squish(this.pan(this.ball.posed(t.ra)), this.toy.voice);
@@ -2489,7 +2789,7 @@
           if (voice === 'sticky') Sound.pop(pan);
           else if (voice === 'wet') Sound.blub(pan);
           else if (voice === 'foam') Sound.air(1.5);
-          else Sound.pop(pan, 0.5, 0.7);
+          else if (voice !== 'crunch') Sound.pop(pan, 0.5, 0.7); // (a crunchy one is heard filling out again instead: see crackle)
         }
       },
 
@@ -2550,7 +2850,7 @@
           Sound.wake();
           for (const f of FIST) {
             const a = V.norm(M3.applyT(this.ball.Q, V.norm(f)));
-            this.touches.push({ live: true, gone: false, fist: true, a, ra: shapeAt(this.toy.shape, a[0], a[1], a[2]), w: 0.52, pr: 0, hold: 0, d: [0, 0, 0], dv: [0, 0, 0], dir: V.mul(a, -1), near: [], slide: 0, over: true, waxy: false });
+            this.touches.push({ live: true, gone: false, fist: true, a, ra: shapeAt(this.toy.shape, a[0], a[1], a[2]), w: 0.52, pr: 0, hold: 0, d: [0, 0, 0], dv: [0, 0, 0], dir: V.mul(a, -1), near: [], slide: 0, over: true, waxy: false, heard: 0 });
           }
           if (!this.toy.wax || !this.shell.whole) Sound.squish(0, this.toy.voice, 1.5);
           if (this.hintFor > 1.2) this.hintFor = 1.2;
@@ -2562,7 +2862,8 @@
               deep = Math.max(deep, t.pr);
             }
           }
-          if (deep > 0.45 && (!this.toy.wax || !this.shell.whole)) this.toy.voice === 'foam' ? Sound.air(1.5) : this.toy.voice === 'wet' ? Sound.blub(0) : Sound.pop(0, 0.7, 0.8);
+          const voice = this.toy.voice;
+          if (deep > 0.45 && (!this.toy.wax || !this.shell.whole) && voice !== 'crunch') voice === 'foam' ? Sound.air(1.5) : voice === 'wet' ? Sound.blub(0) : Sound.pop(0, 0.7, 0.8);
         }
       },
 
@@ -2611,10 +2912,35 @@
             continue;
           }
           for (let k = 0; k < 3; k++) t.d[k] = damp(t.d[k], pull[k], 40, dt);
-          const n = V.norm(M3.apply(ball.A, t.a));
+          const n = ball.outward(t.a);
           t.dir = V.norm([ray.d[0] * 0.2 - n[0] * 0.8, ray.d[1] * 0.2 - n[1] * 0.8, ray.d[2] * 0.2 - n[2] * 0.8]);
           t.pr = damp(t.pr, t.over ? 1 : 0.1, 1 / toy.sink, dt);
         }
+      },
+
+      /** A crunchy toy crackles for as long as something in it is on the move: a finger going in or sliding, a dent filling out again. */
+      crackle(dt) {
+        const { ball, toy } = this;
+        let work = ball.flow * dt * 380, at = 0, weight = 0;
+        for (const t of this.touches) {
+          if (t.live) {
+            const did = Math.abs(t.pr - t.heard) * toy.depth * (t.fist ? 26 : 60) + t.slide * dt * t.pr * 30;
+            work += did;
+            at += this.pan(ball.posed(t.ra)) * did;
+            weight += did;
+          }
+          t.heard = t.pr;
+        }
+        this.crunch += work;
+        this.since += dt;
+        if (this.since < 0.03) return; // they are let out a few at a time, over the moment that follows
+        const n = Math.min(Math.floor(this.crunch), 14);
+        if (n > 0) {
+          Sound.crunch(weight > 0 ? at / weight : this.pan(ball.C), n, this.since);
+          if (n > 5) buzz(8);
+        }
+        this.crunch = Math.min(this.crunch - n, 6);
+        this.since = 0;
       },
 
       /** Turns what happened this frame into sound, crumbs and a buzz. */
@@ -2667,7 +2993,7 @@
           } else if (!this.nudged && !this.coat && !shell.whole && shell.stuck > shell.count * 0.1 && !this.touches.length) {
             // cracked all over, but most of it still clinging on
             this.nudged = true;
-            this.say('남은 조각은 문지르거나 꽉 쥐면 떨어져요 · 바닥을 밀면 굴러가요', 6);
+            this.say(`남은 조각은 문지르거나 꽉 쥐면 떨어져요 · 바닥을 밀면 ${SLAB[toy.shape] ? '뒤집혀요' : '굴러가요'}`, 6);
           }
         }
         if (this.hintFor > 0 && (this.hintFor -= dt) <= 0) $('hint').classList.remove('on');
@@ -2692,11 +3018,23 @@
         this.grip = damp(this.grip, this.gripping ? 1 : 0, this.gripping ? 9 : 14, dt);
         this.feel(dt);
         ball.give = this.toy.wax && shell.count ? smooth(0.4, 0.95, 1 - shell.whole / shell.count) : 1;
+        let turning = false;
+        for (const p of this.pointers.values()) if (p.rolling) turning = true;
+        if (ball.turning && !turning) ball.wake = true; // let go of, however that came about: it may have been left standing on an edge
+        ball.turning = turning;
         this.moved = ball.step(dt, this.toy, this.touches, this.grip);
+        if (this.toy.voice === 'crunch') this.crackle(dt);
         if (this.toy.wax && (this.moved || shell.busy)) shell.update(dt, this.touches);
-        this.crumbs.update(dt, ball.C);
+        this.crumbs.update(dt, ball);
         this.hear();
         this.tell(dt);
+        const to = this.lens, at = this.seen;
+        if (at.long !== to.long || at.pitch !== to.pitch || at.aim !== to.aim) {
+          // another toy has come: the camera eases to where that one is best seen from
+          const there = Math.abs(at.long - to.long) < 1e-3 && Math.abs(at.pitch - to.pitch) < 2e-4 && Math.abs(at.aim - to.aim) < 1e-3;
+          for (const k of ['long', 'pitch', 'aim']) at[k] = there ? to[k] : damp(at[k], to[k], 6, dt);
+          this.point();
+        }
         this.view.draw(this, dt);
       },
     };
