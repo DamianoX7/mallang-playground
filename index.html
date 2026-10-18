@@ -86,6 +86,7 @@
     .meter { display: flex; align-items: center; gap: 10px; margin: 10px 4px 0; font-size: 13.5px; }
     .meter i { flex: 1; height: 7px; border-radius: 9px; overflow: hidden; background: rgba(255, 255, 255, 0.7); }
     .meter b { display: block; width: 100%; height: 100%; border-radius: 9px; background: var(--accent); transition: width 0.25s, background 0.3s; }
+    .meter .pill { flex: none; margin: -4px 0; padding: 6px 12px; font-size: 13.5px; } /* the freezer, for a toy that may go in it */
     .chips { display: flex; gap: 6px; margin-top: 10px; padding: 2px; overflow-x: auto; scrollbar-width: none; touch-action: pan-x; }
     .chips::-webkit-scrollbar { display: none; }
     .chip {
@@ -158,7 +159,7 @@
         <button class="pill" id="recoat" type="button" hidden>다시 코팅</button>
         <button class="pill main" id="grip" type="button">꽉 쥐기</button>
       </div>
-      <div class="meter" id="meter" hidden><span id="meterText">왁스 100%</span><i><b id="meterBar"></b></i></div>
+      <div class="meter" id="meter" hidden><span id="meterText">왁스 100%</span><i><b id="meterBar"></b></i><button class="pill" id="chill" type="button" hidden>❄️ 얼리기</button></div>
       <div class="chips" id="chips"></div>
     </section>
   </div>
@@ -353,6 +354,13 @@
         id: 'butter', name: '버터', shape: 'butter', knot: false, face: 3, gloss: 0.22, trans: 0.5, powder: 0.12, depth: 0.3, lobe: 0.8, sit: 0.97, wide: 1.35, look: [47, 0.42], see: 0.5,
         waxA: '#fffdf7', waxB: '#fff8e8', base: '#ffeb96', deep: '#ffc44a', bg: '#eef3f8', floor: '#e0e8f1', accent: '#3f82c9', dot: ['#fff1b8', '#f7b52e'],
       },
+      {
+        // 청사과 왁뿌볼 ("청사과 속 비밀이 깨진다"): the green wax is not dipped on over the skin but sealed in under it, round a white filling,
+        // so it cracks into green tiles with the white between them and nothing falls off. It smells of green apple (scent: the colour of that),
+        // the more so the finer it is crushed, and it may go in the freezer (chill): "차갑게 해서 부시면 소리가 더 좋아요!"
+        id: 'apple', name: '청사과', inner: true, chill: true, scent: '#7ccb3e', gloss: 0.2, trans: 0.3, stretch: 0.24, pull: 1.4, stick: 0.36,
+        waxA: '#76c21a', waxB: '#a4dc4a', base: '#fbfcf3', deep: '#e2f3bf', bg: '#eef7e0', floor: '#dcedc6', accent: '#5aa82c', dot: ['#c6ee82', '#6cbf2c'],
+      },
     ].map((w) => ({ ...INSIDE, ...w }));
 
     // where a fox keeps its parts, as directions from its middle (the left ear, cheek and paw mirror the right ones)
@@ -535,18 +543,19 @@
         o.stop(t + dur + 0.05);
       },
 
-      /** Wax breaking. size 0…1: a chip … a whole plate. */
-      crack(size, pan, delay = 0) {
+      /** Wax breaking. size 0…1: a chip … a whole plate. cold 0…1: wax just out of the freezer, which goes louder and crisper. */
+      crack(size, pan, delay = 0, cold = 0) {
         if (!this.live()) return;
-        const bits = 3 + Math.round(size * 8);
+        const bits = 3 + Math.round(size * 8 + cold * 5);
         if (!this.room(bits + 2)) return;
-        const t = this.ctx.currentTime + 0.004 + delay, to = this.at(pan);
-        this.grain(t, 3800 + rand() * 2600, 0.7, 0.012, 0.35 + 0.75 * size, to, 'highpass');
-        this.grain(t, lerp(2600, 1300, size) * (0.85 + 0.3 * rand()), 1.3, 0.025 + 0.05 * size, 0.9 + 1.9 * size, to);
+        const t = this.ctx.currentTime + 0.004 + delay, to = this.at(pan), loud = 1 + 0.4 * cold, bright = 1 + 0.3 * cold;
+        this.grain(t, (3800 + rand() * 2600) * bright, 0.7, 0.012, (0.35 + 0.75 * size) * loud, to, 'highpass');
+        this.grain(t, lerp(2600, 1300, size) * (0.85 + 0.3 * rand()) * bright, 1.3, 0.025 + 0.05 * size, (0.9 + 1.9 * size) * loud, to);
         for (let i = 0; i < bits; i++) {
-          this.grain(t + 0.012 + rand() * (0.04 + 0.13 * size), 2400 + rand() * 5200, 2 + rand() * 3, 0.006 + rand() * 0.016, Math.max(0.2, 1.1 - 0.08 * i) * (0.4 + rand() * 0.6) * (0.5 + size), to);
+          this.grain(t + 0.012 + rand() * (0.04 + 0.13 * size), (2400 + rand() * 5200) * bright, 2 + rand() * 3, 0.006 + rand() * 0.016, Math.max(0.2, 1.1 - 0.08 * i) * (0.4 + rand() * 0.6) * (0.5 + size) * loud, to);
         }
         if (size > 0.45) this.tone(t, 170, 85, 0.07, 0.4 * size, to);
+        if (cold > 0) this.tone(t, 2900 + rand() * 900, 2200, 0.05, 0.1 * cold, to); // and rings a little, like glass
       },
 
       /** A crumb or a shard landing on the table. */
@@ -773,6 +782,7 @@
         this.tossed = false;
         this.spin = [0, 0, 0];
         this.give = 1; //         how much the body as a whole may deform (unbroken wax: not at all)
+        this.stiff = 0; //        how hard it has frozen (0…1): a finger goes in that much less far
         this.limb = new Int32Array(0); // points that stick out (ears, a tail), and how loosely each follows the body (0…1)
         this.lag = new Float32Array(0);
         this.was = new Float32Array(0); //  where those points belonged last frame, and how fast that was moving
@@ -1096,7 +1106,7 @@
           t.near.length = 0;
           const ax = t.ra[0], ay = t.ra[1], az = t.ra[2], dx = t.d[0], dy = t.d[1], dz = t.d[2];
           const lobe2 = toy.lobe * toy.lobe, w2 = t.w * t.w, ring2 = w2 * 5.76, far2 = Math.max(lobe2, ring2);
-          const pulls = dx * dx + dy * dy + dz * dz > 1e-9, swell = toy.bulge * toy.depth * t.pr;
+          const pulls = dx * dx + dy * dy + dz * dz > 1e-9, swell = toy.bulge * toy.depth * t.pr * (1 - this.stiff);
           for (let i = 0, j = 0; i < n; i++, j += 3) {
             const ex = rest[j] - ax, ey = rest[j + 1] - ay, ez = rest[j + 2] - az, d2 = ex * ex + ey * ey + ez * ez;
             if (d2 > far2) continue;
@@ -1144,7 +1154,7 @@
           // fingers: the skin under one is pushed in at least as deep as the finger is
           for (const t of touches) {
             if (!t.live || t.pr < 0.001) continue;
-            const depth = toy.depth * t.pr * (t.fist ? 0.62 : 1), px = t.dir[0], py = t.dir[1], pz = t.dir[2], near = t.near;
+            const depth = toy.depth * t.pr * (t.fist ? 0.62 : 1) * (1 - this.stiff), px = t.dir[0], py = t.dir[1], pz = t.dir[2], near = t.near;
             for (let q = 0; q < near.length; q += 2) {
               const i = near[q], j = i * 3, want = depth * near[q + 1] * free[i];
               const have = off[j] * px + off[j + 1] * py + off[j + 2] * pz;
@@ -1186,8 +1196,12 @@
 
     const THICK = 0.042; //   how thick the wax goes on
     const UNDER = 1.004; //   its underside, just clear of the skin
+    const SEAL = 0.066; //    wax sealed in under a clear skin: how far out that skin is
     const GRAVITY = 30;
     const STUCK = 1, LOOSE = 2, LYING = 3, GONE = 4;
+    const CRAZED = 0.95; //  sealed-in wax: a cracked piece draws back this far from its neighbours (the white between them is the crack)…
+    const GROUND = 0.32; //  …and crushed, it gets smaller, down to about this
+    const STONE = 1.15; //   colder than this (see App.freeze), a toy is frozen too hard to crack: 짱돌
 
     /* A coat of wax, already divided into the shards it will break into.
        Unbroken, the shards make one shell that holds the ball rigid. Where it
@@ -1210,6 +1224,8 @@
         this.dirty = false;
         this.busy = false; //  something is still falling, opening or shrinking away
         this.strain = 0;
+        this.inner = false; // the wax is sealed in under the skin: it cracks, and is crushed finer and finer, but nothing comes off
+        this.cold = 0; //      how cold it is (App.cold): cold wax is brittle, and frozen hard it hardly cracks at all
       }
 
       clear() {
@@ -1219,9 +1235,10 @@
         this.stamp++;
       }
 
-      /** A fresh coat, with its own way of breaking. */
-      build(seed) {
+      /** A fresh coat, with its own way of breaking. inner: sealed in under the skin. */
+      build(seed, inner = false) {
         const rnd = rng(seed), ball = this.ball, shape = ball.shape, slab = !!SLAB[shape];
+        this.inner = inner;
         // everything is laid out by direction from the toy's middle; these give the point of its skin that way, and how the skin faces there
         const at = (u) => shapeAt(shape, u[0], u[1], u[2]), faces = (u) => facing(shape, u[0], u[1], u[2]);
 
@@ -1409,7 +1426,17 @@
           }
         }
         const b = this.body[over];
-        return !b || b.kind === STUCK;
+        return !b || (b.kind === STUCK && !this.inner); // (once sealed-in wax has cracked, a finger is on the skin over it)
+      }
+
+      /** How much of a sealed-in coat has been broken up, 0…1: a little for each crack, the rest as the pieces are crushed finer. */
+      crushed() {
+        let sum = 0;
+        for (let c = 0; c < this.count; c++) {
+          const b = this.body[c];
+          if (b) sum += 0.2 + 0.8 * clamp((CRAZED - b.scale) / (CRAZED - b.least), 0, 1);
+        }
+        return this.count ? sum / this.count : 0;
       }
 
       emit(type, shard, size) {
@@ -1421,13 +1448,15 @@
       piece(cells, root, loose) {
         const a = this.anchor[root] * 3, ball = this.ball;
         const up = [ball.out[a], ball.out[a + 1], ball.out[a + 2]];
+        const flat = this.inner ? 0.3 : 1; // sealed in, the skin holds it down
         const b = {
           kind: STUCK, cells, root,
           pref: [ball.rest[a], ball.rest[a + 1], ball.rest[a + 2]], up, // the point of the outline it rides on, and which way the skin faces there
-          pos: [0, 0, 0], rot: M3.ident(), scale: 1,
+          pos: [0, 0, 0], rot: M3.ident(), scale: this.inner ? CRAZED : 1,
+          least: this.inner ? GROUND * (0.6 + 0.8 * rand()) : GROUND, // sealed in, how small it may be crushed
           axis: V.norm(V.cross(up, [rand() - 0.5, rand() - 0.5, rand() - 0.5])), // it settles a little askew, which is what shows the crack
-          tilt: cells.length > 1 ? 0.012 + 0.03 * rand() : 0.03 + 0.07 * rand(),
-          rise: 0.002 + 0.008 * rand(),
+          tilt: (cells.length > 1 ? 0.012 + 0.03 * rand() : 0.03 + 0.07 * rand()) * flat,
+          rise: (0.002 + 0.008 * rand()) * flat,
           open: 0,
           hold: 0.3 + 1.7 * rand() * rand(), // how well it sticks
           loose,
@@ -1451,7 +1480,8 @@
             root = c;
           }
         }
-        this.piece(cells, root, 0);
+        if (this.inner) for (const c of cells) this.piece([c], c, 0); // under the skin there is no plate to lift away: every shard is a tile of its own at once
+        else this.piece(cells, root, 0);
         this.whole -= cells.length;
         this.stuck += cells.length;
         this.dirty = true;
@@ -1460,7 +1490,7 @@
 
       /** A finger on the shell: it cracks under it at once, and further out the harder it is pressed. */
       press(t) {
-        const reach = 0.15 + 0.42 * t.pr + 0.12 * Math.min(1, t.hold / 1.5), spot = this.spot;
+        const reach = (0.15 + 0.42 * t.pr + 0.12 * Math.min(1, t.hold / 1.5)) * (1 - 0.85 * smooth(STONE, STONE + 0.45, this.cold)), spot = this.spot;
         for (let c = 0, q = 0; c < this.count; c++, q += 3) {
           if (this.body[c]) continue;
           const d = Math.hypot(spot[q] - t.ra[0], spot[q + 1] - t.ra[1], spot[q + 2] - t.ra[2]);
@@ -1500,8 +1530,9 @@
         }
 
         // bending, shaking, stretching and rubbing all work it loose
-        // (a flat side does not bend when the whole toy is squeezed, as a round one does: there it is the skin stretching under the wax that does it)
-        const bend = 1 - V.dot(n, was) + (SLAB[ball.shape] ? this.strain * this.strain * 0.18 : 0);
+        // (a flat side does not bend when the whole toy is squeezed, as a round one does: there it is the skin stretching under the wax that does it;
+        //  and wax sealed in is worked by the filling moving under it wherever the toy is squeezed, down on the table as much as anywhere)
+        const bend = 1 - V.dot(n, was) + (SLAB[ball.shape] ? this.strain * this.strain * 0.18 : 0) + (this.inner ? this.strain * 0.08 : 0);
         const shake = Math.hypot(ball.vel[a], ball.vel[a + 1], ball.vel[a + 2]);
         const pulled = Math.hypot(ball.drag[a], ball.drag[a + 1], ball.drag[a + 2]);
         let rub = 0, pinned = false;
@@ -1514,12 +1545,22 @@
           }
         }
         if (pinned && b.cells.length === 1) {
-          // right under the fingertip there is nowhere to go: it is ground to crumbs
+          // right under the fingertip there is nowhere to go: it is ground to crumbs (sealed in, a little finer)
           b.crush = (b.crush || 0) + dt;
-          if (b.crush > 0.06 + b.hold * 0.12) return this.crumble(b);
+          if (b.crush > 0.06 + b.hold * 0.12) return this.inner ? this.grind(b) : this.crumble(b);
         }
-        b.loose += dt * (bend * 6 + shake * 0.2 + pulled * 2.5 + rub * 0.9 + (this.whole + this.stuck < this.count * 0.04 ? 2 : 0));
-        if (b.loose > b.hold && !pinned) this.shed(b, n);
+        const brittle = 1 + 1.5 * Math.min(1, this.cold); // cold wax goes to pieces sooner
+        b.loose += dt * (bend * 6 + shake * 0.2 + pulled * 2.5 + rub * 0.9 + (this.whole + this.stuck < this.count * 0.04 ? 2 : 0)) * brittle;
+        if (b.loose > b.hold && !pinned) this.inner ? this.grind(b) : this.shed(b, n);
+      }
+
+      /** Sealed in, a piece has nowhere to go: worked loose, it breaks smaller where it is. */
+      grind(b) {
+        b.loose = b.crush = 0;
+        if (b.scale <= b.least) return;
+        b.scale = Math.max(b.least, b.scale * 0.8);
+        b.hold = 0.3 + 1.7 * rand() * rand();
+        this.emit('chip', b.root, 1);
       }
 
       /** It comes off, and from here on it is a thing of its own. */
@@ -1632,8 +1673,9 @@
         b.fresh = true;
       }
 
-      /** Clears the table (and whatever still clings to the ball): each piece shrinks away. */
+      /** Clears the table (and whatever still clings to the ball): each piece shrinks away. (Wax sealed in goes wherever the ball goes.) */
       sweep() {
+        if (this.inner) return;
         for (const b of this.bodies) if (b.kind !== GONE && b.away === null) b.away = -rand() * 0.15;
         this.busy = true;
       }
@@ -1809,6 +1851,74 @@
             } else on[k] = 2;
           }
         }
+      }
+    }
+
+    // ------------------------------------------------------------------ scent
+
+    const WISP = 16; // points along a wisp
+
+    /* Wisps that curl up off the toy and fade: the smell of green apple from
+       where its wax has broken, and, just out of the freezer, the cold
+       spilling off it. Each is a ribbon turned to face whoever is looking. */
+    class Scent {
+      constructor(max) {
+        this.max = max;
+        this.list = [];
+        this.count = 0; //                                  how many are laid out to be drawn
+        this.pos = new Float32Array(max * WISP * 6); //     two points across at each point along
+        this.fx = new Float32Array(max * WISP * 6); //      how strongly it shows there, which edge (−1, 1), and the cold (1) or the smell (0)
+        this.idx = new Uint16Array(max * (WISP - 1) * 6);
+        for (let w = 0, k = 0; w < max; w++) {
+          for (let i = 0; i < WISP - 1; i++, k += 6) {
+            const a = (w * WISP + i) * 2;
+            this.idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], k);
+          }
+        }
+      }
+
+      /** n wisps from a point of the toy whose skin faces out there. cold: not the smell, which rises, but the cold, which spills off sideways and sinks. */
+      puff(at, out, n, cold = false) {
+        const side = Math.hypot(out[0], out[2]) || 1;
+        for (let i = 0; i < n && this.list.length < this.max; i++) {
+          const spread = (cold ? 0.7 : 0.25) * (0.5 + rand());
+          this.list.push({
+            at: V.add(at, V.mul(out, 0.08)),
+            way: [(out[0] / side) * spread, cold ? -0.3 : 1, (out[2] / side) * spread],
+            t: -0.3 * rand(), // a few together do not all leave at once
+            life: cold ? 1.3 + 0.8 * rand() : 1.8 + rand(),
+            speed: cold ? 0.32 + 0.16 * rand() : 0.45 + 0.25 * rand(),
+            len: cold ? 0.28 + 0.14 * rand() : 0.4 + 0.25 * rand(),
+            curl: 0.05 + 0.06 * rand(), turns: 7 + 6 * rand(), phase: rand() * TAU,
+            width: cold ? 0.09 : 0.032 + 0.016 * rand(),
+            cold: cold ? 1 : 0,
+          });
+        }
+      }
+
+      /** Moves them on, and lays each out along its curl as a ribbon facing the eye. */
+      update(dt, eye) {
+        this.list = this.list.filter((w) => (w.t += dt) < w.life);
+        const { pos, fx } = this;
+        const along = (w, h) => {
+          const c = w.curl * Math.sqrt(h);
+          return [w.at[0] + w.way[0] * h + c * Math.sin(w.turns * h + w.phase), w.at[1] + w.way[1] * h, w.at[2] + w.way[2] * h + c * Math.cos(w.turns * 0.8 * h + w.phase)];
+        };
+        let n = 0;
+        for (const w of this.list) {
+          if (w.t <= 0) continue;
+          const head = w.speed * w.t, tail = Math.max(0, head - w.len);
+          const show = smooth(0, 0.3, w.t) * (1 - smooth(w.life - 0.8, w.life, w.t)) * (w.cold ? 0.32 : 0.75);
+          for (let i = 0, j = n * WISP * 6; i < WISP; i++, j += 6) {
+            const s = i / (WISP - 1), h = lerp(tail, head, s), p = along(w, h), ahead = along(w, h + 0.01);
+            const fade = Math.pow(Math.sin(Math.PI * s), 0.7); // thin and faint at both ends
+            const across = V.mul(V.norm(V.cross(V.sub(ahead, p), V.sub(eye, p))), w.width * (0.35 + 0.65 * fade) * 0.5);
+            pos.set([p[0] - across[0], p[1] - across[1], p[2] - across[2], p[0] + across[0], p[1] + across[1], p[2] + across[2]], j);
+            fx.set([show * fade, -1, w.cold, show * fade, 1, w.cold], j);
+          }
+          n++;
+        }
+        this.count = n;
       }
     }
 
@@ -2132,6 +2242,56 @@
       }
     `;
 
+    // the clear skin that wax sealed in is under: the skin of the toy, stood out from it (uLift), and seen only by the light it catches
+    const VS_FILM = `
+      attribute vec3 aPos, aNrm, aRest;
+      uniform mat4 uVP; uniform float uLift;
+      varying vec3 vPos, vNrm, vRest;
+      void main() { vNrm = normalize(aNrm); vRest = aRest; vPos = aPos + vNrm * uLift; gl_Position = uVP * vec4(vPos, 1.); }
+    `;
+    const FS_FILM = `
+      precision highp float;
+      varying vec3 vPos, vNrm, vRest;
+      uniform float uFrost; // 0…1: just out of the freezer, rime has formed on it
+      ${GLSL_NOISE}
+      ${GLSL_LIGHT}
+      void main() {
+        vec3 N = normalize(vNrm), V = normalize(uCam - vPos), R = reflect(-V, N), r = normalize(vRest);
+        float ndv = max(dot(N, V), 0.), F = .04 + .96 * pow(1. - ndv, 5.);
+        vec3 shine = vec3(pane(R, uKey, vec2(.2, .26), .035) * 1.15 + pane(R, uFill, vec2(.07, .3), .05) * .3);
+        vec3 col = room(R);
+        float a = F * .85; // it mirrors the room, the more the more glancing the look
+        if (uFrost > 0.) {
+          // rime: a fine white bloom, thicker in patches and where it is seen edge on, and here and there a crystal that catches the window
+          float grain = .6 * vnoise(r * 55.) + .4 * vnoise(r * 23.), patch = smoothstep(.3, .8, fbm(r * 4.));
+          float f = uFrost * clamp(.12 + .3 * grain + .2 * patch + .4 * pow(1. - ndv, 2.), 0., .8);
+          float dif = clamp((dot(N, uKey) + .4) / 1.4, 0., 1.);
+          col = mix(col, vec3(.92, .96, 1.) * (dif * .7 + .3 * mix(uFloor, uSky, N.y * .5 + .5)), f);
+          a = mix(a, 1., f);
+          vec3 g = floor(r * 150.), o = vec3(hash13(g + 1.), hash13(g + 2.), hash13(g + 3.)) - .5;
+          shine = shine * (1. - .7 * f) + step(.93, hash13(g)) * pow(max(dot(normalize(N + o), normalize(uKey + V)), 0.), 30.) * uFrost * 2.;
+        }
+        gl_FragColor = vec4(pow(col, vec3(1. / 2.2)) * a + pow(shine, vec3(1. / 2.2)), a); // (to be laid over what is under it: premultiplied)
+      }
+    `;
+
+    const VS_WISP = `
+      attribute vec3 aPos, aFx;
+      uniform mat4 uVP;
+      varying vec3 vFx;
+      void main() { vFx = aFx; gl_Position = uVP * vec4(aPos, 1.); }
+    `;
+    const FS_WISP = `
+      precision mediump float;
+      varying vec3 vFx; // how strongly it shows here, across it (−1…1), the cold (1) or the smell (0)
+      uniform vec3 uScent;
+      void main() {
+        float across = abs(vFx.y), a = vFx.x * (1. - smoothstep(.2, 1., across));
+        vec3 col = mix(mix(uScent, vec3(1.), .35 * (1. - across)), vec3(1.), vFx.z); // paler down the middle, so it shows on dark and light alike
+        gl_FragColor = vec4(col * a, a);
+      }
+    `;
+
     class View {
       constructor(canvas) {
         const opts = { antialias: true, alpha: false, powerPreference: 'high-performance' };
@@ -2146,6 +2306,8 @@
         this.pShadow = this.program(VS_SHADOW, FS_WHITE, ['aPos']);
         this.pBlur = this.program(VS_BLUR, FS_BLUR, ['aPos']);
         this.pCrumb = this.program(VS_CRUMB, FS_CRUMB, ['aP']);
+        this.pFilm = this.program(VS_FILM, FS_FILM, ['aPos', 'aNrm', 'aRest']);
+        this.pWisp = this.program(VS_WISP, FS_WISP, ['aPos', 'aFx']);
         this.shade = [this.target(SHADE), this.target(SHADE)];
         this.floor = this.buffer(new Float32Array([-60, -60, 60, -60, -60, 60, 60, 60]));
         this.whole = this.buffer(new Float32Array([-1, -1, 3, -1, -1, 3]));
@@ -2305,6 +2467,7 @@
         this.to = { bg: lin(toy.bg), floor, dark: floor.map((c, i) => c * lerp(0.5, 0.45 + 0.45 * deep[i], see)), base: lin(toy.base), deep };
         if (now || !this.col) this.col = JSON.parse(JSON.stringify(this.to));
         if (toy.wax) this.wax = { a: lin(toy.waxA), b: lin(toy.waxB), see: toy.see || 0 };
+        if (toy.scent) this.smell = [1, 3, 5].map((i) => parseInt(toy.scent.slice(i, i + 2), 16) / 255); // (not lit: drawn in the colour as it is)
       }
 
       draw(app, dt) {
@@ -2402,19 +2565,6 @@
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.bIdx);
         gl.drawElements(gl.TRIANGLES, ball.idx.length, gl.UNSIGNED_SHORT, 0);
 
-        if (toy.knot) {
-          // the knot stands on its bit of skin, poking out through any wax
-          const k = ball.knot * 3, n = V.norm([ball.nrm[k], ball.nrm[k + 1], ball.nrm[k + 2]]), out = waxed && shell.whole + shell.stuck > 0 ? 0.03 : -0.012;
-          u = this.use(this.pSoft, [[this.knot.pos, 3], [this.knot.nrm, 3], [this.knot.pos, 3], [this.knot.pos, 3]]);
-          gl.uniformMatrix3fv(u.uM, false, M3.gl(M3.arc([0, 1, 0], n)));
-          gl.uniform3f(u.uT, ball.pos[k] + n[0] * out, ball.pos[k + 1] + n[1] * out, ball.pos[k + 2] + n[2] * out);
-          gl.uniform3fv(u.uBase, col.base.map((c) => lerp(c, 1, 0.75)));
-          gl.uniform4f(u.uMat, 1, 0.9, 0.7, 0);
-          gl.uniform4f(u.uFx, 0, 0, 0, 0);
-          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.knot.idx);
-          gl.drawElements(gl.TRIANGLES, this.knot.count, gl.UNSIGNED_SHORT, 0);
-        }
-
         if (waxed) {
           u = this.use(this.pShell, [[this.sPos, 3], [this.sNrm, 3], [this.sRest, 3], [this.sKind, 1]]);
           this.light(u);
@@ -2435,6 +2585,61 @@
           gl.uniform3fv(u.uColB, this.wax.b.map((c) => Math.pow(c * 0.8 + 0.2, 1 / 2.2)));
           gl.drawArrays(gl.POINTS, 0, crumbs.max);
         }
+
+        if (toy.inner) {
+          // the clear skin the wax is sealed in
+          u = this.use(this.pFilm, [[this.bPos, 3], [this.bNrm, 3], [this.bRest, 3]]);
+          this.light(u);
+          gl.uniform1f(u.uLift, SEAL);
+          gl.uniform1f(u.uFrost, smooth(0, 0.6, app.cold));
+          this.glassy(true);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.bIdx);
+          gl.drawElements(gl.TRIANGLES, ball.idx.length, gl.UNSIGNED_SHORT, 0);
+          this.glassy(false);
+        }
+
+        if (toy.knot) {
+          // the knot stands on its bit of skin, poking out through any wax
+          const k = ball.knot * 3, n = V.norm([ball.nrm[k], ball.nrm[k + 1], ball.nrm[k + 2]]);
+          const out = toy.inner ? SEAL - 0.012 : waxed && shell.whole + shell.stuck > 0 ? 0.03 : -0.012;
+          u = this.use(this.pSoft, [[this.knot.pos, 3], [this.knot.nrm, 3], [this.knot.pos, 3], [this.knot.pos, 3]]);
+          gl.uniformMatrix3fv(u.uM, false, M3.gl(M3.arc([0, 1, 0], n)));
+          gl.uniform3f(u.uT, ball.pos[k] + n[0] * out, ball.pos[k + 1] + n[1] * out, ball.pos[k + 2] + n[2] * out);
+          gl.uniform3fv(u.uBase, col.base.map((c) => lerp(c, 1, 0.75)));
+          gl.uniform4f(u.uMat, 1, 0.9, 0.7, 0);
+          gl.uniform4f(u.uFx, 0, 0, 0, 0);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.knot.idx);
+          gl.drawElements(gl.TRIANGLES, this.knot.count, gl.UNSIGNED_SHORT, 0);
+        }
+
+        const scent = app.scent;
+        if (scent.count) {
+          if (!this.wPos) {
+            this.wPos = this.buffer(scent.pos, false, true);
+            this.wFx = this.buffer(scent.fx, false, true);
+            this.wIdx = this.buffer(scent.idx, true);
+          }
+          this.fill(this.wPos, scent.pos.subarray(0, scent.count * WISP * 6));
+          this.fill(this.wFx, scent.fx.subarray(0, scent.count * WISP * 6));
+          u = this.use(this.pWisp, [[this.wPos, 3], [this.wFx, 3]]);
+          gl.uniformMatrix4fv(u.uVP, false, cam.vp);
+          gl.uniform3fv(u.uScent, this.smell || [1, 1, 1]);
+          gl.disable(gl.CULL_FACE); // a ribbon may be seen from either side
+          this.glassy(true);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.wIdx);
+          gl.drawElements(gl.TRIANGLES, scent.count * (WISP - 1) * 6, gl.UNSIGNED_SHORT, 0);
+          this.glassy(false);
+        }
+      }
+
+      /** On: what is drawn next is see-through. It goes over what is there already (premultiplied), and hides nothing drawn after it. */
+      glassy(on) {
+        const gl = this.gl;
+        if (on) {
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        } else gl.disable(gl.BLEND);
+        gl.depthMask(!on);
       }
     }
 
@@ -2488,6 +2693,9 @@
       seen: null, //     …and how far it has got with what the toy asks of it: it eases there
       crunch: 0, //      crackles a crunchy toy still owes (see crackle), and how long since it last let some out
       since: 0,
+      smell: 0, //       how much of a scented toy's smell is out (see waft)
+      cold: 0, //        how cold the toy is: 1 after ten minutes in the freezer, 2 left in too long (see freeze); it warms up again
+      freezer: null, //  in the freezer now: { t }
 
       start() {
         this.stage = $('stage');
@@ -2497,6 +2705,7 @@
         this.ball = new Squish(coarse ? 4 : 5);
         this.shell = new Shell(this.ball);
         this.crumbs = new Crumbs(700);
+        this.scent = new Scent(48);
 
         const kept = Keep.read();
         Sound.on = kept.sound !== false;
@@ -2561,6 +2770,10 @@
           Sound.wake();
           this.recoat();
         });
+        $('chill').addEventListener('click', () => {
+          Sound.wake();
+          this.freeze();
+        });
 
         const sound = $('sound');
         const show = () => {
@@ -2607,6 +2820,8 @@
         }
         for (const tab of document.querySelectorAll('.tab')) tab.setAttribute('aria-selected', tab.dataset.mode === this.mode ? 'true' : 'false');
         $('recoat').hidden = $('meter').hidden = this.mode !== 'wax';
+        $('recoat').textContent = this.next.inner ? `새 ${this.next.name}` : '다시 코팅'; // wax sealed in cannot be put on again: there are more in the box
+        $('chill').hidden = !this.next.chill;
         document.documentElement.style.setProperty('--accent', this.next.accent);
         document.querySelector('meta[name=theme-color]').content = this.next.bg;
       },
@@ -2618,6 +2833,7 @@
       /** What to try first with the toy that has just arrived. */
       hello() {
         const toy = this.toy;
+        if (toy.scent) return `꾹 눌러서 깨 보세요 · 부술수록 ${toy.name} 향이 진해져요`;
         if (toy.wax) return '꾹 눌러서 왁스를 바사삭 깨 보세요';
         return toy.hint || (toy.roll ? '꾹 누르고, 쭉 당겨 보세요 · 바닥을 밀면 굴러가요' : '꾹 누르고, 쭉 당겨 보세요');
       },
@@ -2666,6 +2882,7 @@
         this.resize();
         this.save();
         Sound.tap();
+        this.freezer = null; // (taken out of the freezer to make room, if it was in there)
         if (this.swap) return;
         this.swap = true;
         this.coat = null;
@@ -2678,9 +2895,10 @@
       wear(toy, now) {
         const { ball, shell } = this;
         this.toy = this.next = toy;
+        this.cold = this.smell = 0;
         ball.reset(toy.shape);
         if (toy.wax) {
-          shell.build(this.seed++);
+          shell.build(this.seed++, !!toy.inner);
           ball.free.fill(0);
         } else {
           shell.clear();
@@ -2694,9 +2912,16 @@
         this.chips();
       },
 
-      /** A new coat of wax: the table is cleared, the wax runs down over the ball, then sets. */
+      /** A new coat of wax: the table is cleared, the wax runs down over the ball, then sets. (Wax sealed in cannot be: a new one comes out of the box instead.) */
       recoat() {
-        if (this.coat || this.swap || !this.toy.wax) return;
+        if (this.coat || this.swap || this.freezer || !this.toy.wax) return;
+        if (this.toy.inner) {
+          this.swap = true; // tossed away, and the same again drops in, new
+          this.dropAll();
+          this.ball.toss();
+          Sound.tap();
+          return;
+        }
         this.coat = { t: 0, step: 0 };
         this.dropAll();
         this.shell.sweep();
@@ -2741,6 +2966,64 @@
         }
       },
 
+      /** Ten minutes in the freezer (a moment, here). Cold, the wax cracks louder and crisper — "차갑게 해서 부시면 소리가 더 좋아요!" —
+          but left in too long, the whole thing is as hard as a stone (짱돌) until it has warmed up a little. */
+      freeze() {
+        if (this.freezer || this.swap || this.coat || !this.toy.chill) return;
+        this.freezer = { t: 0 };
+        this.dropAll();
+        this.ball.toss();
+        Sound.tap();
+        this.say(this.cold > 0.5 ? '또 얼려요? 너무 오래 얼리면 짱돌이 돼요…' : '냉동실에서 10분만 얼릴게요…', 3);
+      },
+
+      freezing(dt) {
+        const f = this.freezer, ball = this.ball;
+        f.t += dt;
+        if (ball.lift > 5) {
+          // in the freezer: well out of sight, and too high up to throw a shadow on the table
+          ball.lift = 12;
+          ball.liftV = 0;
+        }
+        if (f.t < 1.8 || ball.lift < 5) return;
+        this.freezer = null;
+        this.cold = Math.min(2, this.cold + 1);
+        ball.tossed = false; // and out it comes
+        ball.lift = 5;
+        ball.liftV = -6;
+        this.say(this.cold > 1.5 ? '너무 오래 얼려서 짱돌이 됐어요! 손으로 주물러서 녹여 주세요' : '꽁꽁! 차갑게 해서 부시면 소리가 더 좋아요', 5);
+      },
+
+      /** Out of the freezer it warms up again: by itself on the table, and sooner in a hand. */
+      thaw(dt) {
+        let warm = 1 / 50;
+        for (const t of this.touches) if (t.live) warm += t.fist ? 1 / 120 : 1 / 60;
+        const was = this.cold;
+        this.cold = Math.max(0, this.cold - warm * dt);
+        if (was > STONE && this.cold <= STONE) this.say('이제 깨질 만큼 녹았어요!', 3);
+      },
+
+      /** A scented toy smells more the more it is broken: while it is worked (and, once broken, a little even when it is not), wisps of the smell
+          rise from where it is broken. Just out of the freezer, the cold spills off it. */
+      waft(dt) {
+        const { ball, shell, scent } = this;
+        if (this.toy.scent && shell.inner) this.smell = shell.crushed();
+        let work = this.grip;
+        for (const t of this.touches) if (t.live) work += t.pr * 0.6;
+        const from = (cold) => {
+          // a point of the skin's upper half (for the smell, one that is broken)
+          for (let tries = 0; tries < 8; tries++) {
+            const j = Math.floor(rand() * ball.n) * 3, n = V.norm([ball.nrm[j], ball.nrm[j + 1], ball.nrm[j + 2]]);
+            if (n[1] < (cold ? -0.2 : 0.1) || !(cold || shell.body[shell.cover[j / 3]])) continue;
+            scent.puff([ball.pos[j], ball.pos[j + 1], ball.pos[j + 2]], n, 1, cold);
+            return;
+          }
+        };
+        if (rand() < this.smell * (0.3 + 4 * Math.min(1, work)) * dt) from(false);
+        if (rand() < 2.5 * smooth(0.2, 0.8, this.cold) * dt) from(true);
+        scent.update(dt, this.view.cam.eye);
+      },
+
       // ---- fingers
 
       /** The direction, from the toy's middle, of the bit of skin under a point of the page (or nothing, off the toy). */
@@ -2770,9 +3053,11 @@
           heard: 0, //                                         how far in it was when last listened to (see crackle)
         };
         t.waxy = !!this.toy.wax && this.shell.waxAt(a);
-        if (!t.waxy) Sound.squish(this.pan(this.ball.posed(t.ra)), this.toy.voice);
+        if (this.cold > STONE) Sound.thud(0.2); // frozen as hard as a stone: a finger only knocks on it
+        else if (!t.waxy) Sound.squish(this.pan(this.ball.posed(t.ra)), this.toy.voice);
         this.touches.push(t);
         if (this.hintFor > 1.2) this.hintFor = 1.2;
+        if (this.cold > STONE && this.hintFor <= 0) this.say('꽁꽁 얼었어요! 손으로 주무르면 녹아요', 3);
         return t;
       },
 
@@ -2806,7 +3091,7 @@
         Sound.wake();
         capture(this.stage, e);
         this.stage.classList.add('down');
-        const a = this.swap ? null : this.pick(e.clientX, e.clientY);
+        const a = this.swap || this.freezer ? null : this.pick(e.clientX, e.clientY);
         // on the toy it is a finger; anywhere else it rolls the toy round
         this.pointers.set(e.pointerId, a ? this.touch(a, e.clientX, e.clientY, e.pointerType) : { rolling: true, x: e.clientX, y: e.clientY, t: performance.now() });
       },
@@ -2822,7 +3107,7 @@
           this.flick = [lerp(this.flick ? this.flick[0] : 0, ay / dt, 0.5), lerp(this.flick ? this.flick[1] : 0, ax / dt, 0.5), 0];
         } else if (p.gone) {
           // it got away: take hold again wherever the pointer is on it now
-          const a = this.swap ? null : this.pick(e.clientX, e.clientY);
+          const a = this.swap || this.freezer ? null : this.pick(e.clientX, e.clientY);
           if (a) this.pointers.set(e.pointerId, this.touch(a, e.clientX, e.clientY, e.pointerType));
         } else {
           p.x = e.clientX;
@@ -2844,7 +3129,7 @@
 
       /** A whole hand round it, for as long as the button is held. */
       squeeze(on) {
-        if (on === this.gripping || (on && this.swap)) return;
+        if (on === this.gripping || (on && (this.swap || this.freezer))) return;
         this.gripping = on;
         if (on) {
           Sound.wake();
@@ -2852,7 +3137,8 @@
             const a = V.norm(M3.applyT(this.ball.Q, V.norm(f)));
             this.touches.push({ live: true, gone: false, fist: true, a, ra: shapeAt(this.toy.shape, a[0], a[1], a[2]), w: 0.52, pr: 0, hold: 0, d: [0, 0, 0], dv: [0, 0, 0], dir: V.mul(a, -1), near: [], slide: 0, over: true, waxy: false, heard: 0 });
           }
-          if (!this.toy.wax || !this.shell.whole) Sound.squish(0, this.toy.voice, 1.5);
+          if (this.cold > STONE) Sound.thud(0.3);
+          else if (!this.toy.wax || !this.shell.whole) Sound.squish(0, this.toy.voice, 1.5);
           if (this.hintFor > 1.2) this.hintFor = 1.2;
         } else {
           let deep = 0;
@@ -2863,7 +3149,7 @@
             }
           }
           const voice = this.toy.voice;
-          if (deep > 0.45 && (!this.toy.wax || !this.shell.whole) && voice !== 'crunch') voice === 'foam' ? Sound.air(1.5) : voice === 'wet' ? Sound.blub(0) : Sound.pop(0, 0.7, 0.8);
+          if (deep > 0.45 && (!this.toy.wax || !this.shell.whole) && voice !== 'crunch' && this.cold <= STONE) voice === 'foam' ? Sound.air(1.5) : voice === 'wet' ? Sound.blub(0) : Sound.pop(0, 0.7, 0.8);
         }
       },
 
@@ -2945,20 +3231,24 @@
 
       /** Turns what happened this frame into sound, crumbs and a buzz. */
       hear() {
-        const { ball, shell, crumbs } = this;
+        const { ball, shell, crumbs, scent } = this, cold = Math.min(1, this.cold);
+        // wax sealed in sends nothing flying: what comes out of it is its smell
+        const sealed = shell.inner, smells = sealed && !!this.toy.scent;
         for (const ev of ball.events) if (ev.type === 'land') Sound.thud(clamp(ev.hit / 9, 0.2, 1));
         ball.events.length = 0;
         let late = 0;
         for (const ev of shell.events) {
           const pan = this.pan(ev.pos);
           if (ev.type === 'crack') {
-            Sound.crack(clamp(ev.size / 6, 0.2, 1), pan, late);
-            crumbs.burst(ev.pos, ev.n, 2 + ev.size, 1.6);
+            Sound.crack(clamp(ev.size / 6, 0.2, 1), pan, late, cold);
+            if (smells) scent.puff(ev.pos, ev.n, rand() < 0.6 ? 1 : 0);
+            else if (!sealed) crumbs.burst(ev.pos, ev.n, 2 + ev.size, 1.6);
             buzz(12);
             late += 0.012 + rand() * 0.02; // a shell going all at once is heard as a run of cracks, not one bang
           } else if (ev.type === 'chip') {
-            Sound.crack(0.1 + rand() * 0.12, pan, late);
-            crumbs.burst(ev.pos, ev.n, 2, 1.2);
+            Sound.crack(0.1 + rand() * 0.12, pan, late, cold);
+            if (smells && rand() < 0.15 + 0.4 * this.smell) scent.puff(ev.pos, ev.n, 1);
+            else if (!sealed) crumbs.burst(ev.pos, ev.n, 2, 1.2);
             buzz(6);
             late += 0.008 + rand() * 0.016;
           } else if (ev.type === 'crush') {
@@ -2978,7 +3268,24 @@
       /** The meter and the hint. */
       tell(dt) {
         const { toy, shell } = this;
-        if (toy.wax && shell.count) {
+        if (toy.wax && shell.count && shell.inner) {
+          // wax sealed in never comes off: what the meter shows is how much of the smell is out
+          const pct = Math.round(this.smell * 100);
+          if (pct !== this.shown) {
+            this.shown = pct;
+            $('meterText').textContent = `${toy.name} 향 ${pct}%`;
+            $('meterBar').style.width = pct + '%';
+          }
+          $('recoat').disabled = shell.whole === shell.count || !!this.freezer;
+          if (!this.done && pct >= 100) {
+            this.done = this.nudged = true;
+            Sound.chime();
+            this.say(`${toy.name} 향이 가득해요! 계속 주물러도 돼요`, 5);
+          } else if (!this.nudged && shell.whole < shell.count * 0.7 && !this.touches.length) {
+            this.nudged = true;
+            this.say('속은 하얘요! 꽉 쥐고 주무를수록 잘게 부서져요', 5);
+          }
+        } else if (toy.wax && shell.count) {
           const pct = Math.round(((shell.whole + shell.stuck) / shell.count) * 100);
           if (pct !== this.shown) {
             this.shown = pct;
@@ -2996,6 +3303,7 @@
             this.say(`남은 조각은 문지르거나 꽉 쥐면 떨어져요 · 바닥을 밀면 ${SLAB[toy.shape] ? '뒤집혀요' : '굴러가요'}`, 6);
           }
         }
+        if (toy.chill) $('chill').disabled = !!this.freezer || this.swap;
         if (this.hintFor > 0 && (this.hintFor -= dt) <= 0) $('hint').classList.remove('on');
       },
 
@@ -3012,12 +3320,16 @@
           ball.lift = 5;
           ball.liftV = -6;
           this.swap = false;
-          this.say(toy === this.toy ? '' : this.hello(), 5);
+          this.say(toy === this.toy && !toy.inner ? '' : this.hello(), 5); // (the same one again, sealed in: a new one out of the box)
         }
+        if (this.freezer) this.freezing(dt);
         if (this.coat) this.coating(dt);
         this.grip = damp(this.grip, this.gripping ? 1 : 0, this.gripping ? 9 : 14, dt);
         this.feel(dt);
-        ball.give = this.toy.wax && shell.count ? smooth(0.4, 0.95, 1 - shell.whole / shell.count) : 1;
+        if (this.cold > 0 && !this.freezer) this.thaw(dt);
+        shell.cold = this.cold;
+        ball.stiff = Math.min(0.95, 0.9 * smooth(STONE, STONE + 0.45, this.cold) + 0.15 * Math.min(1, this.cold)); // cold, the filling is firmer; frozen hard, it hardly gives at all
+        ball.give = (this.toy.wax && shell.count ? smooth(0.4, 0.95, 1 - shell.whole / shell.count) : 1) * (1 - ball.stiff);
         let turning = false;
         for (const p of this.pointers.values()) if (p.rolling) turning = true;
         if (ball.turning && !turning) ball.wake = true; // let go of, however that came about: it may have been left standing on an edge
@@ -3027,6 +3339,7 @@
         if (this.toy.wax && (this.moved || shell.busy)) shell.update(dt, this.touches);
         this.crumbs.update(dt, ball);
         this.hear();
+        this.waft(dt);
         this.tell(dt);
         const to = this.lens, at = this.seen;
         if (at.long !== to.long || at.pitch !== to.pitch || at.aim !== to.aim) {
